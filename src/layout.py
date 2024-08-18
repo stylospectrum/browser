@@ -1,12 +1,13 @@
-import skia # type: ignore
+import skia  # type: ignore
 
 from abc import ABC, abstractmethod
 from typing import Union, cast
 
 from node import Text, Element, Node
-from draw_command import Blend, DrawRRect, DrawText, DrawLine, DrawCommand
+from draw_command import Blend, DrawRRect, DrawText, DrawLine, PaintCommand
 from utils import get_font, linespace
 from constants import INPUT_WIDTH_PX, BLOCK_ELEMENTS, V_STEP, H_STEP, WIDTH
+
 
 def paint_visual_effects(node: Node, cmds: list, rect):
     opacity = float(node.style.get("opacity", "1.0"))
@@ -17,11 +18,12 @@ def paint_visual_effects(node: Node, cmds: list, rect):
             "border-radius", "0px")[:-2])
         if not blend_mode:
             blend_mode = "source-over"
-        cmds.append(Blend(1.0, "destination-in", [
+        cmds.append(Blend(1.0, "destination-in", node, [
             DrawRRect(rect, border_radius, "white")
         ]))
 
-    return [Blend(opacity, blend_mode, cmds)]
+    return [Blend(opacity, blend_mode, node, cmds)]
+
 
 class Layout(ABC):
     def __init__(self) -> None:
@@ -335,7 +337,7 @@ class BlockLayout:
                                   self.x + self.width, self.y + self.height)
 
     def paint(self):
-        cmds: list[DrawCommand] = []
+        cmds: list[PaintCommand] = []
         bgcolor = self.node.style.get("background-color",
                                       "transparent")
 

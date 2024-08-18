@@ -6,11 +6,12 @@ authors = ["Sinh Truong <slexisvn@gmail.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = "^3.10"
 skia-python = "==87.*"
 pysdl2 = "^0.9.16"
 pysdl2-dll = "^2.30.2"
 dukpy = "^0.4.0"
+pyopengl = "^3.1.7"
 
 
 [build-system]

@@ -1,23 +1,42 @@
 import skia  # type: ignore
 
 from abc import ABC, abstractmethod
+from typing import Union
+
 from utils import parse_blend_mode, parse_color, linespace
 
-class DrawCommand(ABC):
+
+class PaintCommand(ABC):
+    def __init__(self, rect):
+        self.rect = rect
+        self.children = []
+        self.parent = None
+
     @abstractmethod
     def execute(self, canvas):
         pass
 
-class Blend(DrawCommand):
-    def __init__(self, opacity: float, blend_mode, children: list):
+
+class VisualEffect(ABC):
+    def __init__(self, rect, children: list, node=None):
+        self.rect = rect.makeOffset(0.0, 0.0)
+        self.children = children
+        self.node = node
+        for child in self.children:
+            self.rect.join(child.rect)
+
+    @abstractmethod
+    def execute(self, canvas):
+        pass
+
+
+class Blend(VisualEffect):
+    def __init__(self, opacity: float, blend_mode: Union[str, None], node, children: list):
+        super().__init__(skia.Rect.MakeEmpty(), children, node)
         self.opacity = opacity
+        self.node = node
         self.blend_mode = blend_mode
         self.should_save = self.blend_mode or self.opacity < 1
-
-        self.children = children
-        self.rect = skia.Rect.MakeEmpty()
-        for cmd in self.children:
-            self.rect.join(cmd.rect)
 
     def execute(self, canvas):
         paint = skia.Paint(
@@ -31,10 +50,24 @@ class Blend(DrawCommand):
         if self.should_save:
             canvas.restore()
 
+    def clone(self, child):
+        return Blend(self.opacity, self.blend_mode,
+                     self.node, [child])
 
-class DrawOutline(DrawCommand):
+    def __repr__(self):
+        args = ""
+        if self.opacity < 1:
+            args += ", opacity={}".format(self.opacity)
+        if self.blend_mode:
+            args += ", blend_mode={}".format(self.blend_mode)
+        if not args:
+            args = ", <no-op>"
+        return "Blend({})".format(args[2:])
+
+
+class DrawOutline(PaintCommand):
     def __init__(self, rect, color: str, thickness: int):
-        self.rect = rect
+        super().__init__(rect)
         self.color = color
         self.thickness = thickness
 
@@ -52,15 +85,15 @@ class DrawOutline(DrawCommand):
             self.color, self.thickness)
 
 
-class DrawLine(DrawCommand):
+class DrawLine(PaintCommand):
     def __init__(self, x1: int, y1: int, x2: int, y2: int, color: str, thickness: int):
+        super().__init__(skia.Rect.MakeLTRB(x1, y1, x2, y2))
         self.x1 = x1
         self.y1 = y1
         self.x2 = x2
         self.y2 = y2
         self.color = color
         self.thickness = thickness
-        self.rect = skia.Rect.MakeLTRB(x1, y1, x2, y2)
 
     def execute(self, canvas):
         path = skia.Path().moveTo(self.x1, self.y1) \
@@ -78,7 +111,7 @@ class DrawLine(DrawCommand):
             self.color, self.thickness)
 
 
-class DrawText(DrawCommand):
+class DrawText(PaintCommand):
     def __init__(self, x1: int, y1: int, text: str, font, color: str):
         self.top = y1
         self.left = x1
@@ -87,8 +120,8 @@ class DrawText(DrawCommand):
         self.text = text
         self.font = font
         self.color = color
-        self.rect = \
-            skia.Rect.MakeLTRB(x1, y1, self.right, self.bottom)
+        super().__init__(skia.Rect.MakeLTRB(x1, y1,
+                                            self.right, self.bottom))
 
     def execute(self, canvas):
         paint = skia.Paint(
@@ -103,9 +136,9 @@ class DrawText(DrawCommand):
         return "DrawText(text={})".format(self.text)
 
 
-class DrawRect(DrawCommand):
+class DrawRect(PaintCommand):
     def __init__(self, rect, color: str):
-        self.rect = rect
+        super().__init__(rect)
         self.color = color
 
     def execute(self, canvas):
@@ -120,9 +153,9 @@ class DrawRect(DrawCommand):
             self.rect.right(), self.color)
 
 
-class DrawRRect(DrawCommand):
+class DrawRRect(PaintCommand):
     def __init__(self, rect, radius, color):
-        self.rect = rect
+        super().__init__(rect)
         self.rrect = skia.RRect.MakeRectXY(rect, radius, radius)
         self.color = color
 
@@ -131,3 +164,7 @@ class DrawRRect(DrawCommand):
             Color=parse_color(self.color),
         )
         canvas.drawRRect(self.rrect, paint)
+
+    def __repr__(self):
+        return "DrawRRect(rect={}, color={})".format(
+            str(self.rrect), self.color)

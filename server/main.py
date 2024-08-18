@@ -2,16 +2,9 @@ import socket
 import html
 import random
 import urllib.parse
+import time
 
-from typing import cast, Any
-
-s = socket.socket(
-    family=socket.AF_INET,
-    type=socket.SOCK_STREAM,
-    proto=socket.IPPROTO_TCP)
-s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-s.bind(('', 8080))
-s.listen()
+from typing import Any
 
 SESSIONS: dict[str, Any] = {}
 ENTRIES = [
@@ -100,6 +93,25 @@ def do_login(session: dict[str, str], params: dict[str, str]):
         return "401 Unauthorized", out
 
 
+def show_count():
+    out = "<!doctype html>"
+    out += "<div>"
+    out += "  Let's count up to 99!"
+    out += "</div>"
+    out += "<div>Output</div>"
+    out += "<div>XHR</div>"
+    out += "<script src=/event-loop.js></script>"
+    for i in range(1, 200):
+        out += "Text {}<br>".format(i)
+    out += "End of page"
+    return out
+
+
+def show_xhr():
+    time.sleep(5)
+    return "Slow XMLHttpRequest response!"
+
+
 def do_request(session: dict[str, str], method: str, url: str, headers: dict[str, str], body: str):
     if method == "GET" and url == "/":
         return "200 OK", show_comments(session)
@@ -117,6 +129,13 @@ def do_request(session: dict[str, str], method: str, url: str, headers: dict[str
             return "200 OK", f.read()
     elif method == "GET" and url == "/comment.css":
         with open("server/comment.css") as f:
+            return "200 OK", f.read()
+    elif method == "GET" and url == "/count":
+        return "200 OK", show_count()
+    elif method == "GET" and url == "/xhr":
+        return "200 OK", show_xhr()
+    elif url == "/event-loop.js":
+        with open("server/event-loop.js") as f:
             return "200 OK", f.read()
     else:
         return "404 Not Found", not_found(url, method)
@@ -166,6 +185,16 @@ def handle_connection(conx) -> None:
     conx.close()
 
 
-while True:
-    conx, addr = s.accept()
-    handle_connection(conx)
+if __name__ == "__main__":
+    s = socket.socket(
+        family=socket.AF_INET,
+        type=socket.SOCK_STREAM,
+        proto=socket.IPPROTO_TCP)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    s.bind(('', 8080))
+    s.listen()
+
+    while True:
+        conx, addr = s.accept()
+        print("Received connection from", addr)
+        handle_connection(conx)

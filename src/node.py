@@ -1,4 +1,8 @@
-from typing import Union
+from typing import Union, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from css_parser import Animation
+
 
 class Text:
     def __init__(self, text: str, parent: Union['Node', None]):
@@ -7,6 +11,7 @@ class Text:
         self.parent = parent
         self.style: dict[str, str] = {}
         self.is_focused = False
+        self.animations: dict[str, 'Animation'] = {}
 
     def __repr__(self):
         return repr(self.text)
@@ -20,8 +25,10 @@ class Element:
         self.parent = parent
         self.style: dict[str, str] = {}
         self.is_focused = False
+        self.animations: dict[str, 'Animation'] = {}
 
     def __repr__(self):
         return "<" + self.tag + ">"
+
 
 Node = Element | Text

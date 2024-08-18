@@ -1,13 +1,15 @@
 import skia  # type: ignore
 
+from typing import Union, TypeVar, Any, cast
+
 from constants import NAMED_COLORS
 from css_parser import CSSRule
 
-
+T = TypeVar('T')
 FONTS: dict[tuple[str, str], tuple] = {}
 
 
-def parse_blend_mode(blend_mode_str: str):
+def parse_blend_mode(blend_mode_str: Union[str, None]):
     if blend_mode_str == "multiply":
         return skia.BlendMode.kMultiply
     elif blend_mode_str == "difference":
@@ -67,9 +69,9 @@ def linespace(font) -> int:
     return metrics.fDescent - metrics.fAscent
 
 
-def tree_to_list(tree, list: list):
+def tree_to_list(tree: T, list: list) -> list[T]:
     list.append(tree)
-    for child in tree.children:
+    for child in cast(Any, tree).children:
         tree_to_list(child, list)
     return list
 
@@ -78,3 +80,9 @@ def print_tree(node, indent=0):
     print(" " * indent, node)
     for child in node.children:
         print_tree(child, indent + 2)
+
+
+def add_parent_pointers(nodes, parent=None):
+    for node in nodes:
+        node.parent = parent
+        add_parent_pointers(node.children, node)

@@ -1,7 +1,7 @@
 import dukpy  # type: ignore
 import threading
 
-from typing import cast
+from typing import cast, TYPE_CHECKING
 
 from css_parser import CSSParser
 from html_parser import HTMLParser
@@ -9,6 +9,9 @@ from utils import tree_to_list
 from node import Element
 from url import URL
 from task import Task
+
+if TYPE_CHECKING:
+    from browser import Tab
 
 EVENT_DISPATCH_JS = \
     "new Node(dukpy.handle).dispatchEvent(new Event(dukpy.type))"
@@ -18,12 +21,13 @@ RUNTIME_JS = open("src/default/runtime.js").read()
 
 
 class JSContext:
-    def __init__(self, tab):
+    def __init__(self, tab: 'Tab'):
         self.tab = tab
         self.discarded = False
         self.interp = dukpy.JSInterpreter()
         self.node_to_handle: dict[Element, int] = {}
         self.handle_to_node: dict[int, Element] = {}
+
         self.interp.export_function("log", print)
         self.interp.export_function("getAttribute", self.getAttribute)
         self.interp.export_function("querySelectorAll",
@@ -34,19 +38,33 @@ class JSContext:
                                     self.innerHTML_set)
         self.interp.export_function("setTimeout",
                                     self.setTimeout)
+        self.interp.export_function("requestAnimationFrame",
+                                    self.requestAnimationFrame)
+        self.interp.export_function("style_set", self.style_set)
+
+        self.tab.browser.measure.time('script-runtime')
         self.interp.evaljs(RUNTIME_JS)
+        self.tab.browser.measure.stop('script-runtime')
 
-    def dispatch_xhr_onload(self, out, handle: int):
-        if self.discarded: return
-        do_default = self.interp.evaljs(
-            XHR_ONLOAD_JS, out=out, handle=handle)
+    def requestAnimationFrame(self):
+        self.tab.browser.set_needs_animation_frame(self.tab)
 
-    def dispatch_settimeout(self, handle):
+    def dispatch_xhr_onload(self, out: str, handle: int):
         if self.discarded:
             return
-        self.interp.evaljs(SETTIMEOUT_JS, handle=handle)
+        self.tab.browser.measure.time('script-xhr')
+        do_default = self.interp.evaljs(
+            XHR_ONLOAD_JS, out=out, handle=handle)
+        self.tab.browser.measure.stop('script-xhr')
 
-    def setTimeout(self, handle, time):
+    def dispatch_settimeout(self, handle: int):
+        if self.discarded:
+            return
+        self.tab.browser.measure.time('script-settimeout')
+        self.interp.evaljs(SETTIMEOUT_JS, handle=handle)
+        self.tab.browser.measure.stop('script-settimeout')
+
+    def setTimeout(self, handle: int, time: int):
         def run_callback():
             task = Task(self.dispatch_settimeout, handle)
             self.tab.task_runner.schedule_task(task)
@@ -58,13 +76,13 @@ class JSContext:
             raise Exception("Cross-origin XHR blocked by CSP")
         if full_url.origin() != cast(URL, self.tab.url).origin():
             raise Exception("Cross-origin XHR request not allowed")
-        
+
         def run_load():
             headers, response = full_url.request(self.tab.url, body)
             task = Task(self.dispatch_xhr_onload, response, handle)
             self.tab.task_runner.schedule_task(task)
             return response
-        
+
         if not is_async:
             return run_load()
         else:
@@ -79,6 +97,11 @@ class JSContext:
         for child in elt.children:
             child.parent = elt
 
+        self.tab.set_needs_render()
+
+    def style_set(self, handle: int, s: str):
+        elt = self.handle_to_node[handle]
+        elt.attributes["style"] = s
         self.tab.set_needs_render()
 
     def dispatch_event(self, type: str, elt: Element):
@@ -111,6 +134,9 @@ class JSContext:
 
     def run(self, script: str, code: str):
         try:
-            return self.interp.evaljs(code)
+            self.tab.browser.measure.time('script-load')
+            self.interp.evaljs(code)
+            self.tab.browser.measure.stop('script-load')
         except dukpy.JSRuntimeError as e:
+            self.tab.browser.measure.stop('script-load')
             print("Script", script, "crashed", e)

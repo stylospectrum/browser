@@ -1,6 +1,7 @@
-LISTENERS = {};
-SET_TIMEOUT_REQUESTS = {};
-XHR_REQUESTS = {};
+var LISTENERS = {};
+var SET_TIMEOUT_REQUESTS = {};
+var XHR_REQUESTS = {};
+var RAF_LISTENERS = [];
 
 console = {
   log: function (x) {
@@ -38,7 +39,7 @@ Node.prototype.dispatchEvent = function (evt) {
   var handle = this.handle;
   var list = (LISTENERS[handle] && LISTENERS[handle][type]) || [];
   for (var i = 0; i < list.length; i++) {
-    list[i].call(this, type);
+    list[i].call(this, evt);
   }
   return evt.do_default;
 };
@@ -46,6 +47,12 @@ Node.prototype.dispatchEvent = function (evt) {
 Object.defineProperty(Node.prototype, "innerHTML", {
   set: function (s) {
     call_python("innerHTML_set", this.handle, s.toString());
+  },
+});
+
+Object.defineProperty(Node.prototype, "style", {
+  set: function (s) {
+    call_python("style_set", this.handle, s.toString());
   },
 });
 
@@ -93,8 +100,23 @@ function __runSetTimeout(handle) {
 
 function __runXHROnload(body, handle) {
   var obj = XHR_REQUESTS[handle];
-  var evt = new Event('load');
+  var evt = new Event("load");
   obj.responseText = body;
-  if (obj.onload)
-      obj.onload(evt);
+  if (obj.onload) obj.onload(evt);
+}
+
+function requestAnimationFrame(fn) {
+  RAF_LISTENERS.push(fn);
+  call_python("requestAnimationFrame");
+}
+
+function __runRAFHandlers() {
+  var handlers_copy = [];
+  for (var i = 0; i < RAF_LISTENERS.length; i++) {
+    handlers_copy.push(RAF_LISTENERS[i]);
+  }
+  RAF_LISTENERS = [];
+  for (var i = 0; i < handlers_copy.length; i++) {
+    handlers_copy[i]();
+  }
 }

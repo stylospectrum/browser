@@ -6,6 +6,7 @@ from browser import Browser
 from url import URL
 from constants import DEFAULT_URL
 
+
 def mainloop(browser: Browser):
     event = sdl2.SDL_Event()
     while True:
@@ -23,13 +24,12 @@ def mainloop(browser: Browser):
                     browser.handle_down()
             elif event.type == sdl2.SDL_TEXTINPUT:
                 browser.handle_key(event.text.text.decode('utf8'))
-        browser.active_tab.task_runner.run()
-        browser.raster_and_draw()
+        browser.composite_raster_and_draw()
         browser.schedule_animation_frame()
+
 
 if __name__ == "__main__":
     sdl2.SDL_Init(sdl2.SDL_INIT_EVENTS)
     browser = Browser()
     browser.new_tab(URL(DEFAULT_URL))
-    browser.raster_and_draw()
     mainloop(browser)
