@@ -2,13 +2,13 @@ var div = document.querySelectorAll("div")[0];
 
 function fade_in() {
   requestAnimationFrame(function () {
-    div.style = "opacity:0.999";
+    div.style = "opacity: 0.999";
   });
 }
 
 function fade_out() {
   requestAnimationFrame(function () {
-    div.style = "opacity:0.1";
+    div.style = "opacity: 0.1";
   });
 }
 

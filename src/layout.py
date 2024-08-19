@@ -9,7 +9,7 @@ from utils import get_font, linespace
 from constants import INPUT_WIDTH_PX, BLOCK_ELEMENTS, V_STEP, H_STEP, WIDTH
 
 
-def paint_visual_effects(node: Node, cmds: list, rect):
+def paint_visual_effects(node: Element, cmds: list, rect):
     opacity = float(node.style.get("opacity", "1.0"))
     blend_mode = node.style.get("mix-blend-mode")
 
@@ -22,13 +22,16 @@ def paint_visual_effects(node: Node, cmds: list, rect):
             DrawRRect(rect, border_radius, "white")
         ]))
 
-    return [Blend(opacity, blend_mode, node, cmds)]
+    blend_op = Blend(opacity, blend_mode, node, cmds)
+    node.blend_op = blend_op
+
+    return [blend_op]
 
 
 class Layout(ABC):
     def __init__(self) -> None:
         super().__init__()
-        self.children: list = []
+        self.children: list[Layout] = []
         self.node: Node
 
     @abstractmethod
@@ -44,7 +47,7 @@ class Layout(ABC):
         pass
 
     @abstractmethod
-    def paint_effects(self, cmds: list):
+    def paint_effects(self, cmds: list[PaintCommand]):
         pass
 
     @abstractmethod
@@ -95,7 +98,7 @@ class TextLayout(Layout):
 
 
 class InputLayout(Layout):
-    def __init__(self, node: Node, parent: 'LineLayout', previous: Union['InputLayout', None]):
+    def __init__(self, node: Element, parent: 'LineLayout', previous: Union['InputLayout', None]):
         self.node = node
         self.children: list = []
         self.parent = parent
@@ -220,7 +223,7 @@ class LineLayout:
 
 
 class BlockLayout:
-    def __init__(self, node: Node, parent: 'BlockLayout', previous: Union['BlockLayout', None]):
+    def __init__(self, node: Element, parent: 'BlockLayout', previous: Union['BlockLayout', None]):
         self.node = node
         self.parent = parent
         self.previous = previous
@@ -300,7 +303,7 @@ class BlockLayout:
         line.children.append(text)
         self.cursor_x += w + font.measureText(" ")
 
-    def input(self, node: Node):
+    def input(self, node: Element):
         w = INPUT_WIDTH_PX
         if self.cursor_x + w > self.width:
             self.new_line()
@@ -365,7 +368,7 @@ class DocumentLayout(Layout):
     def __init__(self, node: Node):
         self.node = node
         self.parent = None
-        self.children: list[BlockLayout] = []
+        self.children = []
         self.x = None
         self.y = None
         self.width = None

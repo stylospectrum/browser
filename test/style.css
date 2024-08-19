@@ -1,0 +1,4 @@
+div {
+  opacity: 0.999;
+  transition: opacity 2s;
+}

@@ -1,33 +1,26 @@
-import skia  # type: ignore
+import skia
 
-from abc import ABC, abstractmethod
 from typing import Union
 
+from node import Element
 from utils import parse_blend_mode, parse_color, linespace
 
 
-class PaintCommand(ABC):
-    def __init__(self, rect):
-        self.rect = rect
-        self.children = []
-        self.parent = None
-
-    @abstractmethod
-    def execute(self, canvas):
-        pass
-
-
-class VisualEffect(ABC):
-    def __init__(self, rect, children: list, node=None):
+class VisualEffect:
+    def __init__(self, rect, children: list[Union['PaintCommand', 'VisualEffect']], node: Union[Element, None]):
         self.rect = rect.makeOffset(0.0, 0.0)
         self.children = children
         self.node = node
+        self.parent: 'VisualEffect'
         for child in self.children:
             self.rect.join(child.rect)
 
-    @abstractmethod
-    def execute(self, canvas):
-        pass
+
+class PaintCommand:
+    def __init__(self, rect):
+        self.rect = rect
+        self.children = []
+        self.parent: VisualEffect
 
 
 class Blend(VisualEffect):

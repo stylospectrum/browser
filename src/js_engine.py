@@ -11,7 +11,7 @@ from url import URL
 from task import Task
 
 if TYPE_CHECKING:
-    from browser import Tab
+    from tab import Tab
 
 EVENT_DISPATCH_JS = \
     "new Node(dukpy.handle).dispatchEvent(new Event(dukpy.type))"

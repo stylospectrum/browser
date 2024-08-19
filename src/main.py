@@ -1,6 +1,6 @@
 import sys
 import ctypes
-import sdl2  # type: ignore
+import sdl2
 
 from browser import Browser
 from url import URL

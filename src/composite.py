@@ -9,6 +9,13 @@ class CompositedLayer:
         self.surface = None
         self.display_items = [display_item]
 
+    def add(self, display_item: PaintCommand):
+        self.display_items.append(display_item)
+
+    def can_merge(self, display_item: PaintCommand):
+        return display_item.parent == \
+            self.display_items[0].parent
+
     def composited_bounds(self):
         rect = skia.Rect.MakeEmpty()
         for item in self.display_items:

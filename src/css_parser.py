@@ -1,4 +1,7 @@
+import copy
+
 from typing import TYPE_CHECKING, Union
+
 from constants import INHERITED_PROPERTIES, REFRESH_RATE_SEC
 from node import Node, Element
 
@@ -171,7 +174,7 @@ def parse_transition(value: Union[str, None]):
     return properties
 
 
-def diff_styles(old_style: Style, new_style: Style):
+def diff_styles(old_style, new_style):
     transitions: dict[str, tuple[str, str, int]] = {}
     for property, num_frames in \
             parse_transition(new_style.get("transition")).items():
@@ -190,7 +193,7 @@ def diff_styles(old_style: Style, new_style: Style):
 
 
 def style(node: Node, rules: list[CSSRule], tab: 'Tab'):
-    old_style = node.style
+    old_style = copy.deepcopy(node.style)
 
     for property, default_value in INHERITED_PROPERTIES.items():
         if node.parent:

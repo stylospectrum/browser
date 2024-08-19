@@ -2,6 +2,7 @@ from typing import Union, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from css_parser import Animation
+    from layout import Blend
 
 
 class Text:
@@ -26,6 +27,7 @@ class Element:
         self.style: dict[str, str] = {}
         self.is_focused = False
         self.animations: dict[str, 'Animation'] = {}
+        self.blend_op: Union['Blend', None] = None
 
     def __repr__(self):
         return "<" + self.tag + ">"
