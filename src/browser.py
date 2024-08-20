@@ -4,9 +4,9 @@ import OpenGL.GL
 import sdl2
 import skia
 
-from typing import cast
+from typing import Any
 
-from utils import tree_to_list, add_parent_pointers
+from utils import tree_to_list, add_parent_pointers, local_to_absolute, print_tree
 from constants import SCROLL_STEP, WIDTH, HEIGHT, REFRESH_RATE_SEC
 from url import URL
 from draw_command import PaintCommand
@@ -15,7 +15,6 @@ from task import Task
 from measure import MeasureTime
 from tab import Tab, CommitData
 from chrome import Chrome
-from node import Element
 from draw_command import Blend, VisualEffect
 
 
@@ -81,14 +80,15 @@ class Browser:
         self.active_tab_height = 0
         self.active_tab_display_list = None
         self.composited_layers: list[CompositedLayer] = []
-        self.draw_list: list[DrawCompositedLayer] = []
+        self.draw_list: list[VisualEffect] = []
         self.composited_updates = {}
 
         threading.current_thread().name = "Browser thread"
+
     def clear_data(self):
         self.active_tab_scroll = 0
         self.active_tab_url = None
-        self.display_list = []
+        self.active_tab_display_list = []
         self.composited_layers = []
         self.composited_updates = {}
 
@@ -234,26 +234,41 @@ class Browser:
         sdl2.SDL_GL_DeleteContext(self.gl_context)
         sdl2.SDL_DestroyWindow(self.sdl_window)
 
-    def composite(self):
+    def composite(self) -> None:
         self.composited_layers = []
         add_parent_pointers(self.active_tab_display_list)
-        all_commands = []
-        paint_commands: list[PaintCommand] = []
+        all_commands: list[VisualEffect] = []
 
         for cmd in self.active_tab_display_list:
             all_commands = tree_to_list(cmd, all_commands)
-        paint_commands = [cmd for cmd in all_commands
-                          if isinstance(cmd, PaintCommand)]
 
-        for cmd in paint_commands:
-            layer = CompositedLayer(self.skia_context, cmd)
-            self.composited_layers.append(layer)
+        non_composited_commands = [cmd
+                                   for cmd in all_commands
+                                   if isinstance(cmd, PaintCommand) or
+                                   not cmd.needs_compositing
+                                   if not cmd.parent or cmd.parent.needs_compositing
+                                   ]
 
-    def paint_draw_list(self):
+        for cmd in non_composited_commands:
+            for layer in reversed(self.composited_layers):
+                if layer.can_merge(cmd):
+                    layer.add(cmd)
+                    break
+                elif skia.Rect.Intersects(
+                        layer.absolute_bounds(),
+                        local_to_absolute(cmd, cmd.rect)):
+                    layer = CompositedLayer(self.skia_context, cmd)
+                    self.composited_layers.append(layer)
+                    break
+            else:
+                layer = CompositedLayer(self.skia_context, cmd)
+                self.composited_layers.append(layer)
+
+    def paint_draw_list(self) -> None:
         new_effects: dict[VisualEffect, VisualEffect] = {}
         self.draw_list = []
         for composited_layer in self.composited_layers:
-            current_effect = \
+            current_effect: Any = \
                 DrawCompositedLayer(composited_layer)
             if not composited_layer.display_items:
                 continue
@@ -307,8 +322,8 @@ class Browser:
     def composite_raster_and_draw(self):
         self.lock.acquire(blocking=True)
         if not self.needs_composite and \
-            not self.needs_raster and \
-            not self.needs_draw:
+                not self.needs_raster and \
+                not self.needs_draw:
             self.lock.release()
             return
 
@@ -326,6 +341,7 @@ class Browser:
             self.measure.time('draw')
             self.paint_draw_list()
             self.draw()
+            print(self.composited_layers)
             self.measure.stop('draw')
         self.measure.stop('composite_raster_and_draw')
         self.needs_composite = False

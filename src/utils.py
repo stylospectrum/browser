@@ -3,7 +3,7 @@ import skia  # type: ignore
 from typing import Union, TypeVar, Any, cast
 
 from constants import NAMED_COLORS
-from css_parser import CSSRule
+from css_parser import CSSRule, parse_transform
 
 T = TypeVar('T')
 FONTS: dict[tuple[str, str], tuple] = {}
@@ -86,3 +86,45 @@ def add_parent_pointers(nodes, parent=None):
     for node in nodes:
         node.parent = parent
         add_parent_pointers(node.children, node)
+
+
+def map_translation(rect, translation, reversed=False):
+    if not translation:
+        return rect
+    else:
+        (x, y) = translation
+        matrix = skia.Matrix()
+        if reversed:
+            matrix.setTranslate(-x, -y)
+        else:
+            matrix.setTranslate(x, y)
+        return matrix.mapRect(rect)
+
+
+def absolute_bounds_for_obj(obj):
+    rect = skia.Rect.MakeXYWH(
+        obj.x, obj.y, obj.width, obj.height)
+    cur = obj.node
+    while cur:
+        rect = map_translation(rect,
+                               parse_transform(
+                                   cur.style.get("transform", "")))
+        cur = cur.parent
+    return rect
+
+
+def local_to_absolute(display_item, rect):
+    while display_item.parent:
+        rect = display_item.parent.map(rect)
+        display_item = display_item.parent
+    return rect
+
+
+def absolute_to_local(display_item, rect):
+    parent_chain = []
+    while display_item.parent:
+        parent_chain.append(display_item.parent)
+        display_item = display_item.parent
+    for parent in reversed(parent_chain):
+        rect = parent.unmap(rect)
+    return rect

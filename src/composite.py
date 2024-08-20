@@ -1,6 +1,8 @@
 import skia  # type: ignore
 
-from draw_command import PaintCommand
+from draw_command import PaintCommand, DrawOutline
+from constants import SHOW_COMPOSITED_LAYER_BORDERS
+from utils import local_to_absolute, absolute_to_local
 
 
 class CompositedLayer:
@@ -16,10 +18,17 @@ class CompositedLayer:
         return display_item.parent == \
             self.display_items[0].parent
 
+    def absolute_bounds(self):
+        rect = skia.Rect.MakeEmpty()
+        for item in self.display_items:
+            rect.join(local_to_absolute(item, item.rect))
+        return rect
+
     def composited_bounds(self):
         rect = skia.Rect.MakeEmpty()
         for item in self.display_items:
-            rect.join(item.rect)
+            rect.join(absolute_to_local(
+                item, local_to_absolute(item, item.rect)))
         rect.outset(1, 1)
         return rect
 
@@ -44,6 +53,11 @@ class CompositedLayer:
         for item in self.display_items:
             item.execute(canvas)
         canvas.restore()
+
+        if SHOW_COMPOSITED_LAYER_BORDERS:
+            border_rect = skia.Rect.MakeXYWH(
+                1, 1, irect.width() - 2, irect.height() - 2)
+            DrawOutline(border_rect, "red", 1).execute(canvas)
 
 
 class DrawCompositedLayer(PaintCommand):

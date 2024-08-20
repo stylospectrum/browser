@@ -1,7 +1,4 @@
-import copy
-
 from typing import TYPE_CHECKING, Union
-
 from constants import INHERITED_PROPERTIES, REFRESH_RATE_SEC
 from node import Node, Element
 
@@ -163,6 +160,16 @@ class CSSParser:
         return rules
 
 
+def parse_transform(transform_str: str):
+    if transform_str.find('translate(') < 0:
+        return None
+    left_paren = transform_str.find('(')
+    right_paren = transform_str.find(')')
+    (x_px, y_px) = \
+        transform_str[left_paren + 1:right_paren].split(",")
+    return (float(x_px[:-2]), float(y_px[:-2]))
+
+
 def parse_transition(value: Union[str, None]):
     properties: dict[str, int] = {}
     if not value:
@@ -174,7 +181,7 @@ def parse_transition(value: Union[str, None]):
     return properties
 
 
-def diff_styles(old_style, new_style):
+def diff_styles(old_style: Style, new_style: Style):
     transitions: dict[str, tuple[str, str, int]] = {}
     for property, num_frames in \
             parse_transition(new_style.get("transition")).items():
@@ -193,8 +200,9 @@ def diff_styles(old_style, new_style):
 
 
 def style(node: Node, rules: list[CSSRule], tab: 'Tab'):
-    old_style = copy.deepcopy(node.style)
+    old_style = node.style
 
+    node.style = {}
     for property, default_value in INHERITED_PROPERTIES.items():
         if node.parent:
             node.style[property] = node.parent.style[property]

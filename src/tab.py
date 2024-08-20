@@ -1,5 +1,6 @@
 import math
 import urllib.parse
+import skia
 
 from typing import TYPE_CHECKING, Union, cast
 
@@ -12,7 +13,7 @@ from node import Element, Text, Node
 from task import TaskRunner, Task
 from js_engine import JSContext
 from constants import V_STEP
-from utils import tree_to_list, cascade_priority
+from utils import tree_to_list, cascade_priority, absolute_bounds_for_obj
 
 if TYPE_CHECKING:
     from browser import Browser
@@ -81,6 +82,9 @@ class Tab:
                     self.composited_updates.append(node)
                     self.set_needs_paint()
 
+                if animation.frame_count + 1 >= animation.num_frames:
+                    self.browser.needs_animation_frame = False
+
         needs_composite = self.needs_style or self.needs_layout
         self.render()
 
@@ -147,9 +151,10 @@ class Tab:
         self.render()
         self.focus = None
         y += self.scroll
-        objs: list[Layout] = [obj for obj in tree_to_list(self.document, [])
-                              if obj.x <= x < obj.x + obj.width
-                              and obj.y <= y < obj.y + obj.height]
+        loc_rect = skia.Rect.MakeXYWH(x, y, 1, 1)
+        objs = [obj for obj in tree_to_list(self.document, [])
+                if absolute_bounds_for_obj(obj).intersects(
+                    loc_rect)]
 
         if not objs:
             return

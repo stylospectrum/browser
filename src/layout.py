@@ -3,8 +3,9 @@ import skia  # type: ignore
 from abc import ABC, abstractmethod
 from typing import Union, cast
 
+from css_parser import parse_transform
 from node import Text, Element, Node
-from draw_command import Blend, DrawRRect, DrawText, DrawLine, PaintCommand
+from draw_command import Blend, DrawRRect, DrawText, DrawLine, PaintCommand, Transform
 from utils import get_font, linespace
 from constants import INPUT_WIDTH_PX, BLOCK_ELEMENTS, V_STEP, H_STEP, WIDTH
 
@@ -12,6 +13,8 @@ from constants import INPUT_WIDTH_PX, BLOCK_ELEMENTS, V_STEP, H_STEP, WIDTH
 def paint_visual_effects(node: Element, cmds: list, rect):
     opacity = float(node.style.get("opacity", "1.0"))
     blend_mode = node.style.get("mix-blend-mode")
+    translation = parse_transform(
+        node.style.get("transform", ""))
 
     if node.style.get("overflow", "visible") == "clip":
         border_radius = float(node.style.get(
@@ -25,7 +28,7 @@ def paint_visual_effects(node: Element, cmds: list, rect):
     blend_op = Blend(opacity, blend_mode, node, cmds)
     node.blend_op = blend_op
 
-    return [blend_op]
+    return [Transform(translation, rect, node, [blend_op])]
 
 
 class Layout(ABC):

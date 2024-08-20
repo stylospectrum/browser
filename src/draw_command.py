@@ -3,17 +3,20 @@ import skia
 from typing import Union
 
 from node import Element
-from utils import parse_blend_mode, parse_color, linespace
+from utils import parse_blend_mode, parse_color, linespace, map_translation
 
 
 class VisualEffect:
     def __init__(self, rect, children: list[Union['PaintCommand', 'VisualEffect']], node: Union[Element, None]):
         self.rect = rect.makeOffset(0.0, 0.0)
         self.children = children
-        self.node = node
-        self.parent: 'VisualEffect'
         for child in self.children:
             self.rect.join(child.rect)
+        self.node = node
+        self.parent: 'VisualEffect'
+        self.needs_compositing = any([
+            child.needs_compositing for child in self.children  # type: ignore
+        ])
 
 
 class PaintCommand:
@@ -21,6 +24,7 @@ class PaintCommand:
         self.rect = rect
         self.children = []
         self.parent: VisualEffect
+        self.needs_compositing = False
 
 
 class Blend(VisualEffect):
@@ -30,6 +34,9 @@ class Blend(VisualEffect):
         self.node = node
         self.blend_mode = blend_mode
         self.should_save = self.blend_mode or self.opacity < 1
+
+        if self.should_save:
+            self.needs_compositing = True
 
     def execute(self, canvas):
         paint = skia.Paint(
@@ -47,6 +54,19 @@ class Blend(VisualEffect):
         return Blend(self.opacity, self.blend_mode,
                      self.node, [child])
 
+    def map(self, rect):
+        if self.children and \
+           isinstance(self.children[-1], Blend) and \
+           self.children[-1].blend_mode == "destination-in":
+            bounds = rect.makeOffset(0.0, 0.0)
+            bounds.intersect(self.children[-1].rect)
+            return bounds
+        else:
+            return rect
+
+    def unmap(self, rect):
+        return rect
+
     def __repr__(self):
         args = ""
         if self.opacity < 1:
@@ -56,6 +76,40 @@ class Blend(VisualEffect):
         if not args:
             args = ", <no-op>"
         return "Blend({})".format(args[2:])
+
+
+class Transform(VisualEffect):
+    def __init__(self, translation: tuple[float, float], rect, node: Element, children: list):
+        super().__init__(rect, children, node)
+        self.self_rect = rect
+        self.translation = translation
+
+    def execute(self, canvas):
+        if self.translation:
+            (x, y) = self.translation
+            canvas.save()
+            canvas.translate(x, y)
+        for cmd in self.children:
+            cmd.execute(canvas)
+        if self.translation:
+            canvas.restore()
+
+    def clone(self, child):
+        return Transform(self.translation, self.self_rect,
+                         self.node, [child])
+
+    def map(self, rect):
+        return map_translation(rect, self.translation)
+
+    def unmap(self, rect):
+        return map_translation(rect, self.translation, True)
+
+    def __repr__(self):
+        if self.translation:
+            (x, y) = self.translation
+            return "Transform(translate({}, {}))".format(x, y)
+        else:
+            return "Transform(<no-op>)"
 
 
 class DrawOutline(PaintCommand):
