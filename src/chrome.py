@@ -3,13 +3,14 @@ import skia
 from typing import TYPE_CHECKING
 
 from utils import get_font, linespace
-from constants import  WIDTH, DEFAULT_URL
+from constants import WIDTH, DEFAULT_URL
 from url import URL
 from draw_command import DrawLine, DrawText, DrawOutline, DrawRect, PaintCommand
 from task import Task
 
 if TYPE_CHECKING:
     from browser import Browser
+
 
 class Chrome:
     def __init__(self, browser: 'Browser'):
@@ -55,54 +56,55 @@ class Chrome:
             tabs_start + tab_width * i, self.tab_bar_top,
             tabs_start + tab_width * (i + 1), self.tab_bar_bottom)
 
-    def paint(self):
-        cmds: list[PaintCommand] = []
+    def paint(self) -> list[PaintCommand]:
+        if self.browser.dark_mode:
+            color = "white"
+        else:
+            color = "black"
 
-        cmds.append(DrawRect(
-            skia.Rect.MakeLTRB(0, 0, WIDTH, self.bottom),
-            "white"))
+        cmds: list[PaintCommand] = []
         cmds.append(DrawLine(
             0, self.bottom, WIDTH,
-            self.bottom, "black", 1))
+            self.bottom, color, 1))
 
-        cmds.append(DrawOutline(self.new_tab_rect, "black", 1))
+        cmds.append(DrawOutline(self.new_tab_rect, color, 1))
         cmds.append(DrawText(
             self.new_tab_rect.left() + self.padding,
             self.new_tab_rect.top(),
-            "+", self.font, "black"))
+            "+", self.font, color))
 
         for i, tab in enumerate(self.browser.tabs):
             bounds = self.tab_rect(i)
             cmds.append(DrawLine(
                 bounds.left(), 0, bounds.left(), bounds.bottom(),
-                "black", 1))
+                color, 1))
             cmds.append(DrawLine(
                 bounds.right(), 0, bounds.right(), bounds.bottom(),
-                "black", 1))
+                color, 1))
             cmds.append(DrawText(
                 bounds.left() + self.padding, bounds.top() + self.padding,
-                "Tab {}".format(i), self.font, "black"))
+                "Tab {}".format(i), self.font, color))
 
             if tab == self.browser.active_tab:
                 cmds.append(DrawLine(
                     0, bounds.bottom(), bounds.left(), bounds.bottom(),
-                    "black", 1))
+                    color, 1))
                 cmds.append(DrawLine(
                     bounds.right(), bounds.bottom(), WIDTH, bounds.bottom(),
-                    "black", 1))
+                    color, 1))
 
-        cmds.append(DrawOutline(self.back_rect, "black", 1))
+        cmds.append(DrawOutline(self.back_rect, color, 1))
         cmds.append(DrawText(
             self.back_rect.left() + self.padding,
             self.back_rect.top(),
-            "<", self.font, "black"))
+            "<", self.font, color))
 
-        cmds.append(DrawOutline(self.address_rect, "black", 1))
+        cmds.append(DrawOutline(self.address_rect, color, 1))
         if self.focus == "address bar":
             cmds.append(DrawText(
                 self.address_rect.left() + self.padding,
                 self.address_rect.top(),
-                self.address_bar, self.font, "black"))
+                self.address_bar, self.font, color))
             w = self.font.measureText(self.address_bar)
             cmds.append(DrawLine(
                 self.address_rect.left() + self.padding + w,
@@ -116,7 +118,7 @@ class Chrome:
             cmds.append(DrawText(
                 self.address_rect.left() + self.padding,
                 self.address_rect.top(),
-                url, self.font, "black"))
+                url, self.font, color))
 
         return cmds
 
@@ -126,7 +128,7 @@ class Chrome:
         if self.new_tab_rect.contains(x, y):
             self.browser.new_tab_internal(URL(DEFAULT_URL))
         elif self.back_rect.contains(x, y):
-            task = Task(self.browser.active_tab.go_back)
+            task = Task(self.browser.go_back)
             self.browser.active_tab.task_runner.schedule_task(task)
         elif self.address_rect.contains(x, y):
             self.focus = "address bar"
@@ -155,4 +157,3 @@ class Chrome:
 
     def blur(self):
         self.focus = None
-

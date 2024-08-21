@@ -1,12 +1,11 @@
-import skia  # type: ignore
+import skia
 
-from abc import ABC, abstractmethod
 from typing import Union, cast
 
 from css_parser import parse_transform
 from node import Text, Element, Node
 from draw_command import Blend, DrawRRect, DrawText, DrawLine, PaintCommand, Transform
-from utils import get_font, linespace
+from utils import get_font, linespace, dpx
 from constants import INPUT_WIDTH_PX, BLOCK_ELEMENTS, V_STEP, H_STEP, WIDTH
 
 
@@ -31,31 +30,11 @@ def paint_visual_effects(node: Element, cmds: list, rect):
     return [Transform(translation, rect, node, [blend_op])]
 
 
-class Layout(ABC):
+class Layout:
     def __init__(self) -> None:
         super().__init__()
-        self.children: list[Layout] = []
+        self.children: list = []
         self.node: Node
-
-    @abstractmethod
-    def layout(self):
-        pass
-
-    @abstractmethod
-    def paint(self):
-        pass
-
-    @abstractmethod
-    def should_paint(self):
-        pass
-
-    @abstractmethod
-    def paint_effects(self, cmds: list[PaintCommand]):
-        pass
-
-    @abstractmethod
-    def __repr__(self):
-        pass
 
 
 class TextLayout(Layout):
@@ -71,11 +50,13 @@ class TextLayout(Layout):
         return True
 
     def layout(self):
+        self.zoom = self.parent.zoom
         weight = self.node.style["font-weight"]
         style = self.node.style["font-style"]
         if style == "normal":
             style = "roman"
-        size = int(float(self.node.style["font-size"][:-2]) * .75)
+        px_size = float(self.node.style["font-size"][:-2])
+        size = dpx(px_size * 0.75, self.zoom)
         self.font = get_font(size, weight, style)
 
         self.width = self.font.measureText(self.word)
@@ -120,11 +101,13 @@ class InputLayout(Layout):
                                   self.x + self.width, self.y + self.height)
 
     def layout(self):
+        self.zoom = self.parent.zoom
         weight = self.node.style["font-weight"]
         style = self.node.style["font-style"]
         if style == "normal":
             style = "roman"
-        size = int(float(self.node.style["font-size"][:-2]) * .75)
+        px_size = float(self.node.style["font-size"][:-2])
+        size = dpx(px_size * 0.75, self.zoom)
         self.font = get_font(size, weight, style)
 
         self.width = INPUT_WIDTH_PX
@@ -190,6 +173,7 @@ class LineLayout:
         return True
 
     def layout(self):
+        self.zoom = self.parent.zoom
         self.width = self.parent.width
         self.x = self.parent.x
 
@@ -225,8 +209,8 @@ class LineLayout:
             self.x, self.y, self.width, self.height)
 
 
-class BlockLayout:
-    def __init__(self, node: Element, parent: 'BlockLayout', previous: Union['BlockLayout', None]):
+class BlockLayout(Layout):
+    def __init__(self, node: Element, parent: Union['BlockLayout', 'DocumentLayout'], previous: Union['BlockLayout', None]):
         self.node = node
         self.parent = parent
         self.previous = previous
@@ -260,6 +244,7 @@ class BlockLayout:
             previous = next
 
     def layout(self):
+        self.zoom = self.parent.zoom
         self.x = self.parent.x
         self.width = self.parent.width
 
@@ -292,7 +277,8 @@ class BlockLayout:
         style = node.style["font-style"]
         if style == "normal":
             style = "roman"
-        size = int(float(node.style["font-size"][:-2]) * .75)
+        px_size = float(node.style["font-size"][:-2])
+        size = dpx(px_size * 0.75, self.zoom)
         font = get_font(size, weight, style)
 
         w = font.measureText(word)
@@ -307,7 +293,7 @@ class BlockLayout:
         self.cursor_x += w + font.measureText(" ")
 
     def input(self, node: Element):
-        w = INPUT_WIDTH_PX
+        w = dpx(INPUT_WIDTH_PX, self.zoom)
         if self.cursor_x + w > self.width:
             self.new_line()
         line = cast(LineLayout, self.children[-1])
@@ -320,7 +306,8 @@ class BlockLayout:
         style = node.style["font-style"]
         if style == "normal":
             style = "roman"
-        size = int(float(node.style["font-size"][:-2]) * .75)
+        px_size = float(node.style["font-size"][:-2])
+        size = size = dpx(px_size * 0.75, self.zoom)
         font = get_font(size, weight, style)
 
         self.cursor_x += w + font.measureText(" ")
@@ -372,16 +359,17 @@ class DocumentLayout(Layout):
         self.node = node
         self.parent = None
         self.children = []
-        self.x = None
-        self.y = None
-        self.width = None
-        self.height = None
+        self.x: Union[float, None] = None
+        self.y: Union[float, None] = None
+        self.width: Union[float, None] = None
+        self.height: Union[float, None] = None
 
-    def layout(self):
-        self.width = WIDTH - 2 * H_STEP
-        self.x = H_STEP
-        self.y = V_STEP
-        child = BlockLayout(self.node, self, None)
+    def layout(self, zoom: float):
+        self.zoom = zoom
+        self.width = WIDTH - 2 * dpx(H_STEP, self.zoom)
+        self.x = dpx(H_STEP, self.zoom)
+        self.y = dpx(V_STEP, self.zoom)
+        child = BlockLayout(cast(Element, self.node), self, None)
         self.children.append(child)
         child.layout()
         self.height = child.height

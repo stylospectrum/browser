@@ -1,4 +1,4 @@
-DEFAULT_URL = 'http://localhost:8080/index.html'
+DEFAULT_URL = 'https://browser.engineering/examples/example14-line-breaking.html'
 WIDTH, HEIGHT = 800, 600
 H_STEP, V_STEP = 13.0, 18.0
 INPUT_WIDTH_PX = 200

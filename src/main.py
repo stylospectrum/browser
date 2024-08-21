@@ -9,6 +9,8 @@ from constants import DEFAULT_URL
 
 def mainloop(browser: Browser):
     event = sdl2.SDL_Event()
+    ctrl_down = False
+
     while True:
         while sdl2.SDL_PollEvent(ctypes.byref(event)) != 0:
             if event.type == sdl2.SDL_QUIT:
@@ -18,10 +20,25 @@ def mainloop(browser: Browser):
             elif event.type == sdl2.SDL_MOUSEBUTTONUP:
                 browser.handle_click(event.button)
             elif event.type == sdl2.SDL_KEYDOWN:
-                if event.key.keysym.sym == sdl2.SDLK_RETURN:
+                if ctrl_down:
+                    if event.key.keysym.sym == sdl2.SDLK_EQUALS:
+                        browser.increment_zoom(True)
+                    elif event.key.keysym.sym == sdl2.SDLK_MINUS:
+                        browser.increment_zoom(False)
+                    elif event.key.keysym.sym == sdl2.SDLK_0:
+                        browser.reset_zoom()
+                    elif event.key.keysym.sym == sdl2.SDLK_d:
+                        browser.toggle_dark_mode()
+                elif event.key.keysym.sym == sdl2.SDLK_RETURN:
                     browser.handle_enter()
                 elif event.key.keysym.sym == sdl2.SDLK_DOWN:
                     browser.handle_down()
+                elif event.key.keysym.sym == sdl2.SDLK_RCTRL or \
+                        event.key.keysym.sym == sdl2.SDLK_LCTRL:
+                    ctrl_down = True
+            elif event.type == sdl2.SDL_KEYUP:
+                if event.key.keysym.sym == sdl2.SDLK_RCTRL or event.key.keysym.sym == sdl2.SDLK_LCTRL:
+                    ctrl_down = False
             elif event.type == sdl2.SDL_TEXTINPUT:
                 browser.handle_key(event.text.text.decode('utf8'))
         browser.composite_raster_and_draw()

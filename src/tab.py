@@ -12,7 +12,7 @@ from url import URL
 from node import Element, Text, Node
 from task import TaskRunner, Task
 from js_engine import JSContext
-from constants import V_STEP
+from constants import V_STEP, INHERITED_PROPERTIES
 from utils import tree_to_list, cascade_priority, absolute_bounds_for_obj
 
 if TYPE_CHECKING:
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 DEFAULT_STYLE_SHEET = CSSParser(open("src/default/browser.css").read()).parse()
 
 
-def paint_tree(layout_object: Layout, display_list: list[PaintCommand]):
+def paint_tree(layout_object, display_list: list[PaintCommand]):
     cmds: list[PaintCommand] = []
     if layout_object.should_paint():
         cmds = layout_object.paint()
@@ -44,7 +44,8 @@ class CommitData:
 
 class Tab:
     def __init__(self, browser: 'Browser', tab_height: int):
-        self.scroll = 0
+        self.zoom: float = 1
+        self.scroll: float = 0
         self.display_list: list[PaintCommand] = []
         self.url: Union[URL, None] = None
         self.tab_height = tab_height
@@ -57,8 +58,29 @@ class Tab:
         self.needs_paint = False
         self.scroll_changed_in_tab = False
         self.browser = browser
+        self.dark_mode = browser.dark_mode
         self.composited_updates: list[Element] = []
         self.task_runner.start_thread()
+
+    def set_dark_mode(self, val: bool):
+        self.dark_mode = val
+        self.set_needs_render()
+
+    def zoom_by(self, increment: bool):
+        if increment:
+            self.zoom *= 1.1
+            self.scroll *= 1.1
+        else:
+            self.zoom *= 1/1.1
+            self.scroll *= 1/1.1
+        self.scroll_changed_in_tab = True
+        self.set_needs_render()
+
+    def reset_zoom(self):
+        self.scroll /= self.zoom
+        self.zoom = 1
+        self.scroll_changed_in_tab = True
+        self.set_needs_render()
 
     def clamp_scroll(self, scroll):
         height = math.ceil(self.document.height + 2*V_STEP)
@@ -147,7 +169,7 @@ class Tab:
             self.focus.attributes["value"] += char
             self.set_needs_render()
 
-    def click(self, x: int, y: int):
+    def click(self, x: float, y: float):
         self.render()
         self.focus = None
         y += self.scroll
@@ -197,6 +219,7 @@ class Tab:
 
     def load(self, url: URL, payload=None):
         self.scroll = 0
+        self.zoom = 1
         self.scroll_changed_in_tab = True
         headers, body = url.request(self.url, payload)
         self.history.append(url)
@@ -257,13 +280,17 @@ class Tab:
         self.browser.measure.time('render')
 
         if self.needs_style:
+            if self.dark_mode:
+                INHERITED_PROPERTIES["color"] = "white"
+            else:
+                INHERITED_PROPERTIES["color"] = "black"
             style(self.nodes, sorted(self.rules, key=cascade_priority), self)
             self.needs_layout = True
             self.needs_style = False
 
         if self.needs_layout:
             self.document = DocumentLayout(self.nodes)
-            self.document.layout()
+            self.document.layout(self.zoom)
             self.needs_paint = True
             self.needs_layout = False
 

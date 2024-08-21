@@ -79,11 +79,17 @@ class Browser:
         self.active_tab_scroll = 0
         self.active_tab_height = 0
         self.active_tab_display_list = None
+        self.dark_mode = False
         self.composited_layers: list[CompositedLayer] = []
         self.draw_list: list[VisualEffect] = []
         self.composited_updates = {}
 
         threading.current_thread().name = "Browser thread"
+
+    def toggle_dark_mode(self):
+        self.dark_mode = not self.dark_mode
+        task = Task(self.active_tab.set_dark_mode, self.dark_mode)
+        self.active_tab.task_runner.schedule_task(task)
 
     def clear_data(self):
         self.active_tab_scroll = 0
@@ -94,9 +100,19 @@ class Browser:
 
     def set_active_tab(self, tab):
         self.active_tab = tab
+        task = Task(self.active_tab.set_dark_mode, self.dark_mode)
+        self.active_tab.task_runner.schedule_task(task)
+        task = Task(self.active_tab.set_needs_paint)
+        self.active_tab.task_runner.schedule_task(task)
+
         self.clear_data()
         self.needs_animation_frame = True
         self.animation_timer = None
+
+    def go_back(self):
+        task = Task(self.active_tab.go_back)
+        self.active_tab.task_runner.schedule_task(task)
+        self.clear_data()
 
     def clamp_scroll(self, scroll: int):
         height = self.active_tab_height
@@ -227,6 +243,14 @@ class Browser:
             self.set_needs_raster()
         self.lock.release()
 
+    def increment_zoom(self, increment: bool):
+        task = Task(self.active_tab.zoom_by, increment)
+        self.active_tab.task_runner.schedule_task(task)
+
+    def reset_zoom(self):
+        task = Task(self.active_tab.reset_zoom)
+        self.active_tab.task_runner.schedule_task(task)
+
     def handle_quit(self):
         self.measure.finish()
         for tab in self.tabs:
@@ -293,14 +317,21 @@ class Browser:
 
     def raster_chrome(self):
         canvas = self.chrome_surface.getCanvas()
-        canvas.clear(skia.ColorWHITE)
+        if self.dark_mode:
+            background_color = skia.ColorBLACK
+        else:
+            background_color = skia.ColorWHITE
+        canvas.clear(background_color)
 
         for cmd in self.chrome.paint():
             cmd.execute(canvas)
 
     def draw(self):
         canvas = self.root_surface.getCanvas()
-        canvas.clear(skia.ColorWHITE)
+        if self.dark_mode:
+            canvas.clear(skia.ColorBLACK)
+        else:
+            canvas.clear(skia.ColorWHITE)
 
         canvas.save()
         canvas.translate(0,
@@ -341,7 +372,6 @@ class Browser:
             self.measure.time('draw')
             self.paint_draw_list()
             self.draw()
-            print(self.composited_layers)
             self.measure.stop('draw')
         self.measure.stop('composite_raster_and_draw')
         self.needs_composite = False
