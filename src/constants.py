@@ -1,4 +1,7 @@
-DEFAULT_URL = 'https://browser.engineering/examples/example14-focus.html'
+import skia
+
+DEFAULT_URL = 'https://browser.engineering/examples/example15-img.html'
+BROKEN_IMAGE = skia.Image.open("./Broken_Image.png")
 WIDTH, HEIGHT = 800, 600
 H_STEP, V_STEP = 13.0, 18.0
 INPUT_WIDTH_PX = 200

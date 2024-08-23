@@ -13,7 +13,7 @@ from url import URL
 from node import Element, Text
 from task import TaskRunner, Task
 from js_engine import JSContext
-from constants import V_STEP, INHERITED_PROPERTIES, SCROLL_STEP
+from constants import V_STEP, INHERITED_PROPERTIES, SCROLL_STEP, BROKEN_IMAGE
 from utils import tree_to_list, cascade_priority, absolute_bounds_for_obj, is_focusable, get_tabindex
 
 if TYPE_CHECKING:
@@ -66,6 +66,7 @@ class Tab:
         self.needs_accessibility = False
         self.accessibility_tree: Union[AccessibilityNode, None] = None
         self.composited_updates: list[Element] = []
+        self.root_frame = None
         self.task_runner.start_thread()
 
     def advance_tab(self):
@@ -275,11 +276,19 @@ class Tab:
             url.origin() in self.allowed_origins
 
     def load(self, url: URL, payload=None):
+        self.history.append(url)
+        self.task_runner.clear_pending_tasks()
+        self.root_frame = Frame(self, None, None)
+        self.root_frame.load(url, payload)
+        self.root_frame.frame_width = WIDTH
+        self.root_frame.frame_height = self.tab_height
+        
         self.focus = None
         self.scroll = 0
         self.zoom = 1
         self.scroll_changed_in_tab = True
         headers, body = url.request(self.url, payload)
+        body = body.decode("utf8", "replace")
         self.history.append(url)
         self.url = url
         self.display_list = []
@@ -317,6 +326,7 @@ class Tab:
                 continue
             try:
                 headers, body = script_url.request(url)
+                body = body.decode("utf8", "replace")
             except:
                 continue
             task = Task(self.js.run, script_url, body)
@@ -329,9 +339,33 @@ class Tab:
                 continue
             try:
                 headers, body = style_url.request(url)
+                body = body.decode("utf8", "replace")
             except:
                 continue
             self.rules.extend(CSSParser(body).parse())
+
+
+        images = [node
+            for node in tree_to_list(self.nodes, [])
+            if isinstance(node, Element)
+            and node.tag == "img"]
+        for img in images:
+            try:
+                src = img.attributes.get("src", "")
+                image_url = url.resolve(src)
+                assert self.allowed_request(image_url), \
+                    "Blocked load of " + str(image_url) + " due to CSP"
+                header, body = image_url.request(url)
+
+                img.encoded_data = body
+                data = skia.Data.MakeWithoutCopy(body)
+                img.image = skia.Image.MakeFromEncoded(data)
+                assert img.image, \
+                    "Failed to recognize image format for " + str(image_url)
+            except Exception as e:
+                print("Image", img.attributes.get("src", ""),
+                    "crashed", e)
+                img.image = BROKEN_IMAGE
         self.set_needs_render()
 
     def render(self):

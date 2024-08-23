@@ -26,6 +26,8 @@ class AccessibilityNode:
                 self.role = "button"
             elif node.tag == "html":
                 self.role = "document"
+            elif node.tag == "img":
+                self.role = "image"
             elif is_focusable(node):
                 self.role = "focusable"
             else:
@@ -76,6 +78,11 @@ class AccessibilityNode:
             self.text = "Alert"
         elif self.role == "document":
             self.text = "Document"
+        elif self.role == "image":
+            if "alt" in self.node.attributes:
+                self.text = "Image: " + self.node.attributes["alt"]
+            else:
+                self.text = "Image"
 
         if self.node.is_focused:
             self.text += " is focused"

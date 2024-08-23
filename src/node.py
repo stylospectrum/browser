@@ -1,4 +1,4 @@
-from typing import Union, TYPE_CHECKING
+from typing import Union, TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from css_parser import Animation
@@ -30,6 +30,8 @@ class Element:
         self.animations: dict[str, 'Animation'] = {}
         self.blend_op: Union['Blend', None] = None
         self.layout_object: Union['Layout', None] = None
+        self.encoded_data = None
+        self.image: Any
 
     def __repr__(self):
         return "<" + self.tag + ">"

@@ -74,13 +74,13 @@ class URL:
             request += payload
         s.send(request.encode("utf8"))
 
-        response = s.makefile("r", encoding="utf8", newline="\r\n")
-        status_line = response.readline()
+        response = s.makefile("b") # type: ignore
+        status_line = response.readline().decode('utf-8')
         version, status, explanation = status_line.split(" ", 2)
         response_headers: dict[str, str] = {}
 
         while True:
-            line = response.readline()
+            line = response.readline().decode("utf8")
             if line == "\r\n":
                 break
             header, value = line.split(":", 1)

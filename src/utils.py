@@ -11,6 +11,13 @@ if TYPE_CHECKING:
 T = TypeVar('T')
 FONTS: dict[tuple[str, str], tuple] = {}
 
+def parse_image_rendering(quality: str):
+   if quality == "high-quality":
+       return skia.FilterQuality.kHigh_FilterQuality
+   elif quality == "crisp-edges":
+       return skia.FilterQuality.kLow_FilterQuality
+   else:
+       return skia.FilterQuality.kMedium_FilterQuality
 
 def parse_blend_mode(blend_mode_str: Union[str, None]):
     if blend_mode_str == "multiply":
@@ -43,6 +50,12 @@ def get_font(size: int, weight: str, style: str):
         FONTS[key] = font
     return skia.Font(FONTS[key], size)
 
+def font(style, zoom: float):
+    weight = style["font-weight"]
+    variant = style["font-style"]
+    size = float(style["font-size"][:-2]) * 0.75
+    font_size = dpx(size, zoom)
+    return get_font(font_size, weight, variant)
 
 def cascade_priority(rule: CSSRule):
     media, selector, body = rule

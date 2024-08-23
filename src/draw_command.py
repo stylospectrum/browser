@@ -3,7 +3,7 @@ import skia
 from typing import Union
 
 from node import Element
-from utils import parse_blend_mode, parse_color, linespace, map_translation
+from utils import parse_blend_mode, parse_color, linespace, map_translation, parse_image_rendering
 
 
 class VisualEffect:
@@ -215,3 +215,19 @@ class DrawRRect(PaintCommand):
     def __repr__(self):
         return "DrawRRect(rect={}, color={})".format(
             str(self.rrect), self.color)
+
+class DrawImage(PaintCommand):
+    def __init__(self, image, rect, quality: str):
+        super().__init__(rect)
+        self.image = image
+        self.quality = parse_image_rendering(quality)
+
+    def execute(self, canvas):
+        paint = skia.Paint(
+            FilterQuality=self.quality,
+        )
+        canvas.drawImageRect(self.image, self.rect, paint)
+
+    def __repr__(self):
+        return "DrawImage(rect={})".format(
+            self.rect)

@@ -1,4 +1,4 @@
-import skia  # type: ignore
+import skia
 
 from typing import Union
 
