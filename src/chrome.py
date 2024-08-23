@@ -157,3 +157,7 @@ class Chrome:
 
     def blur(self):
         self.focus = None
+
+    def focus_addressbar(self):
+        self.focus = "address bar"
+        self.address_bar = ""

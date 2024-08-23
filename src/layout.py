@@ -4,8 +4,8 @@ from typing import Union, cast
 
 from css_parser import parse_transform
 from node import Text, Element, Node
-from draw_command import Blend, DrawRRect, DrawText, DrawLine, PaintCommand, Transform
-from utils import get_font, linespace, dpx
+from draw_command import Blend, DrawRRect, DrawText, DrawLine, PaintCommand, Transform, DrawOutline
+from utils import get_font, linespace, dpx, parse_outline
 from constants import INPUT_WIDTH_PX, BLOCK_ELEMENTS, V_STEP, H_STEP, WIDTH
 
 
@@ -30,11 +30,18 @@ def paint_visual_effects(node: Element, cmds: list, rect):
     return [Transform(translation, rect, node, [blend_op])]
 
 
+def paint_outline(node: Node, cmds: list[PaintCommand], rect, zoom: float):
+    outline = parse_outline(node.style.get("outline"))
+    if not outline:
+        return
+    thickness, color = outline
+    cmds.append(DrawOutline(rect, color, dpx(thickness, zoom)))
+
+
 class Layout:
     def __init__(self) -> None:
         super().__init__()
         self.children: list = []
-        self.node: Node
 
 
 class TextLayout(Layout):
@@ -45,9 +52,15 @@ class TextLayout(Layout):
         self.parent = parent
         self.previous = previous
         self.y = 0
+        self.node.layout_object = self
 
     def should_paint(self):
         return True
+
+    def self_rect(self):
+        return skia.Rect.MakeLTRB(
+            self.x, self.y, self.x + self.width,
+            self.y + self.height)
 
     def layout(self):
         self.zoom = self.parent.zoom
@@ -92,6 +105,7 @@ class InputLayout(Layout):
         self.y = 0
         self.width = 0
         self.height = 0
+        self.node.layout_object = self
 
     def should_paint(self):
         return True
@@ -138,7 +152,7 @@ class InputLayout(Layout):
                 print("Ignoring HTML contents inside button")
                 text = ""
 
-        if self.node.is_focused:
+        if self.node.is_focused and self.node.tag == "input":
             cx = self.x + self.font.measureText(text)
             cmds.append(DrawLine(
                 cx, self.y, cx, self.y + self.height, "black", 1))
@@ -149,8 +163,10 @@ class InputLayout(Layout):
 
         return cmds
 
-    def paint_effects(self, cmds):
-        return paint_visual_effects(self.node, cmds, self.self_rect())
+    def paint_effects(self, cmds: list[PaintCommand]):
+        cmds = paint_visual_effects(self.node, cmds, self.self_rect())
+        paint_outline(self.node, cmds, self.self_rect(), self.zoom)
+        return cmds
 
     def __repr__(self):
         if self.node.tag == "input":
@@ -161,13 +177,14 @@ class InputLayout(Layout):
             self.x, self.y, self.width, self.height, extra)
 
 
-class LineLayout:
+class LineLayout(Layout):
     def __init__(self, node: Node, parent: 'BlockLayout', previous: Union['LineLayout', None]):
         self.node = node
         self.parent = parent
         self.previous = previous
         self.children: list[Union[TextLayout, InputLayout]] = []
         self.height = 0
+        self.node.layout_object = self
 
     def should_paint(self):
         return True
@@ -201,7 +218,17 @@ class LineLayout:
     def paint(self):
         return []
 
-    def paint_effects(self, cmds):
+    def paint_effects(self, cmds: list[PaintCommand]):
+        outline_rect = skia.Rect.MakeEmpty()
+        outline_node = None
+        for child in self.children:
+            outline_str = cast(Element, child.node.parent).style.get("outline")
+            if parse_outline(outline_str):
+                outline_rect.join(child.self_rect())
+                outline_node = child.node.parent
+        if outline_node:
+            paint_outline(
+                outline_node, cmds, outline_rect, self.zoom)
         return cmds
 
     def __repr__(self):
@@ -214,7 +241,8 @@ class BlockLayout(Layout):
         self.node = node
         self.parent = parent
         self.previous = previous
-        self.children: list[Union[BlockLayout, LineLayout, InputLayout]] = []
+        self.children: list[Union[BlockLayout, LineLayout]] = []
+        self.node.layout_object = self
 
         self.cursor_x = H_STEP
         self.cursor_y = V_STEP
@@ -363,6 +391,7 @@ class DocumentLayout(Layout):
         self.y: Union[float, None] = None
         self.width: Union[float, None] = None
         self.height: Union[float, None] = None
+        self.node.layout_object = self
 
     def layout(self, zoom: float):
         self.zoom = zoom

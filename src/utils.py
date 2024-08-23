@@ -1,9 +1,12 @@
-import skia  # type: ignore
+import skia
 
-from typing import Union, TypeVar, Any, cast
+from typing import Union, TypeVar, Any, cast, TYPE_CHECKING
 
 from constants import NAMED_COLORS
 from css_parser import CSSRule, parse_transform
+
+if TYPE_CHECKING:
+    from node import Element
 
 T = TypeVar('T')
 FONTS: dict[tuple[str, str], tuple] = {}
@@ -42,7 +45,7 @@ def get_font(size: int, weight: str, style: str):
 
 
 def cascade_priority(rule: CSSRule):
-    selector, body = rule
+    media, selector, body = rule
     return selector.priority
 
 
@@ -62,6 +65,13 @@ def parse_color(color: str):
         return parse_color(NAMED_COLORS[color])
     else:
         return skia.ColorBLACK
+
+def parse_outline(outline_str: Union[str, None]):
+    if not outline_str: return None
+    values = outline_str.split(" ")
+    if len(values) != 3: return None
+    if values[1] != "solid": return None
+    return int(values[0][:-2]), values[2]
 
 
 def linespace(font) -> int:
@@ -132,3 +142,15 @@ def absolute_to_local(display_item, rect):
 
 def dpx(css_px: float, zoom: float):
     return css_px * zoom
+
+def is_focusable(node: 'Element'):
+    if get_tabindex(node) < 0:
+        return False
+    elif "tabindex" in node.attributes:
+        return True
+    else:
+        return node.tag in ["input", "button", "a"]
+
+def get_tabindex(node: 'Element'):
+    tabindex = int(node.attributes.get("tabindex", "9999999"))
+    return 9999999 if tabindex == 0 else tabindex

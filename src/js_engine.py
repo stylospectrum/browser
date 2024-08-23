@@ -41,10 +41,17 @@ class JSContext:
         self.interp.export_function("requestAnimationFrame",
                                     self.requestAnimationFrame)
         self.interp.export_function("style_set", self.style_set)
+        self.interp.export_function("setAttribute",
+            self.setAttribute)
 
         self.tab.browser.measure.time('script-runtime')
         self.interp.evaljs(RUNTIME_JS)
         self.tab.browser.measure.stop('script-runtime')
+
+    def setAttribute(self, handle: int, attr: str, value: str):
+        elt = self.handle_to_node[handle]
+        elt.attributes[attr] = value
+        self.tab.set_needs_render()
 
     def requestAnimationFrame(self):
         self.tab.browser.set_needs_animation_frame(self.tab)

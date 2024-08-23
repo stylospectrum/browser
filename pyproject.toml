@@ -12,6 +12,8 @@ pysdl2 = "^0.9.16"
 pysdl2-dll = "^2.30.2"
 dukpy = "^0.4.0"
 pyopengl = "^3.1.7"
+gtts = "^2.5.3"
+playsound = "1.2.2"
 
 
 [build-system]

@@ -1,20 +1,23 @@
 import skia  # type: ignore
 
-from draw_command import PaintCommand, DrawOutline
+from typing import Union
+
+from draw_command import PaintCommand, DrawOutline, VisualEffect
 from constants import SHOW_COMPOSITED_LAYER_BORDERS
 from utils import local_to_absolute, absolute_to_local
 
+DisplayItem = Union[VisualEffect, PaintCommand]
 
 class CompositedLayer:
-    def __init__(self, skia_context, display_item: PaintCommand):
+    def __init__(self, skia_context, display_item: DisplayItem):
         self.skia_context = skia_context
         self.surface = None
         self.display_items = [display_item]
 
-    def add(self, display_item: PaintCommand):
+    def add(self, display_item: DisplayItem):
         self.display_items.append(display_item)
 
-    def can_merge(self, display_item: PaintCommand):
+    def can_merge(self, display_item: DisplayItem):
         return display_item.parent == \
             self.display_items[0].parent
 

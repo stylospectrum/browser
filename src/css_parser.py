@@ -30,6 +30,19 @@ class DescendantSelector:
             node = node.parent
         return False
 
+class PseudoclassSelector:
+    def __init__(self, pseudoclass: str, base: TagSelector):
+        self.pseudoclass = pseudoclass
+        self.base = base
+        self.priority = self.base.priority
+
+    def matches(self, node: Node):
+        if not self.base.matches(node):
+            return False
+        if self.pseudoclass == "focus":
+            return node.is_focused
+        else:
+            return False
 
 class NumericAnimation:
     def __init__(self, old_value: str, new_value: str, num_frames: int):
@@ -59,7 +72,7 @@ class NumericAnimation:
 
 
 CSSSelector = TagSelector | DescendantSelector
-CSSRule = tuple[CSSSelector, dict[str, str]]
+CSSRule = tuple[Union[str, None], CSSSelector, dict[str, str]]
 Style = dict[str, str]
 Animation = NumericAnimation
 
@@ -68,6 +81,17 @@ class CSSParser:
     def __init__(self, s: str):
         self.s = s
         self.i = 0
+
+    def media_query(self):
+        self.literal("@")
+        assert self.word() == "media"
+        self.whitespace()
+        self.literal("(")
+        self.whitespace()
+        prop, val = self.pair([")"])
+        self.whitespace()
+        self.literal(")")
+        return prop, val
 
     def whitespace(self):
         while self.i < len(self.s) and self.s[self.i].isspace():
@@ -129,27 +153,49 @@ class CSSParser:
                 self.i += 1
         return None
 
-    def selector(self):
+    def simple_selector(self):
         out = TagSelector(self.word().casefold())
+        if self.i < len(self.s) and self.s[self.i] == ":":
+            self.literal(":")
+            pseudoclass = self.word().casefold()
+            out = PseudoclassSelector(pseudoclass, out)
+        return out
+    
+    def selector(self):
+        out = self.simple_selector()
         self.whitespace()
         while self.i < len(self.s) and self.s[self.i] != "{":
-            tag = self.word()
-            descendant = TagSelector(tag.casefold())
+            descendant = self.simple_selector()
             out = DescendantSelector(out, descendant)
             self.whitespace()
         return out
 
-    def parse(self):
+    def parse(self) -> list[CSSRule]:
         rules: list[CSSRule] = []
+        media = None
+        self.whitespace()
         while self.i < len(self.s):
             try:
-                self.whitespace()
-                selector = self.selector()
-                self.literal("{")
-                self.whitespace()
-                body = self.body()
-                self.literal("}")
-                rules.append((selector, body))
+                if self.s[self.i] == "@" and not media:
+                    prop, val = self.media_query()
+                    if prop == "prefers-color-scheme" and \
+                        val in ["dark", "light"]:
+                        media = val
+                    self.whitespace()
+                    self.literal("{")
+                    self.whitespace()
+                elif self.s[self.i] == "}" and media:
+                    self.literal("}")
+                    media = None
+                    self.whitespace()
+                else:
+                    selector = self.selector()
+                    self.literal("{")
+                    self.whitespace()
+                    body = self.body()
+                    self.literal("}")
+                    self.whitespace()
+                    rules.append((media, selector, body))
             except Exception:
                 why = self.ignore_until(["}"])
                 if why == "}":
@@ -209,7 +255,9 @@ def style(node: Node, rules: list[CSSRule], tab: 'Tab'):
         else:
             node.style[property] = default_value
 
-    for selector, body in rules:
+    for media, selector, body in rules:
+        if media:
+            if (media == "dark") != tab.dark_mode: continue
         if not selector.matches(node):
             continue
         for property, value in body.items():

@@ -6,14 +6,15 @@ from typing import TYPE_CHECKING, Union, cast
 
 from html_parser import HTMLParser
 from css_parser import CSSParser, style
-from draw_command import PaintCommand, Blend
-from layout import Layout, DocumentLayout
+from draw_command import PaintCommand, Blend, VisualEffect
+from a11y import AccessibilityNode
+from layout import DocumentLayout
 from url import URL
-from node import Element, Text, Node
+from node import Element, Text
 from task import TaskRunner, Task
 from js_engine import JSContext
-from constants import V_STEP, INHERITED_PROPERTIES
-from utils import tree_to_list, cascade_priority, absolute_bounds_for_obj
+from constants import V_STEP, INHERITED_PROPERTIES, SCROLL_STEP
+from utils import tree_to_list, cascade_priority, absolute_bounds_for_obj, is_focusable, get_tabindex
 
 if TYPE_CHECKING:
     from browser import Browser
@@ -34,12 +35,14 @@ def paint_tree(layout_object, display_list: list[PaintCommand]):
 
 
 class CommitData:
-    def __init__(self, url: URL, scroll: int, height: int, display_list: list[PaintCommand], composited_updates: Union[None, dict[Element, Blend]]):
+    def __init__(self, url: URL, scroll: int, height: int, display_list: list[Union[VisualEffect, PaintCommand]], composited_updates: Union[None, dict[Element, Blend]], accessibility_tree: Union[AccessibilityNode, None], focus: Element):
         self.url = url
         self.scroll = scroll
         self.height = height
         self.display_list = display_list
         self.composited_updates = composited_updates
+        self.accessibility_tree = accessibility_tree
+        self.focus = focus
 
 
 class Tab:
@@ -57,10 +60,32 @@ class Tab:
         self.needs_layout = False
         self.needs_paint = False
         self.scroll_changed_in_tab = False
+        self.needs_focus_scroll = False
         self.browser = browser
-        self.dark_mode = browser.dark_mode
+        self.dark_mode: bool = browser.dark_mode
+        self.needs_accessibility = False
+        self.accessibility_tree: Union[AccessibilityNode, None] = None
         self.composited_updates: list[Element] = []
         self.task_runner.start_thread()
+
+    def advance_tab(self):
+        focusable_nodes = [node
+                           for node in tree_to_list(self.nodes, [])
+                           if isinstance(node, Element) and is_focusable(node)]
+        focusable_nodes.sort(key=get_tabindex)
+
+        if self.focus in focusable_nodes:
+            idx = focusable_nodes.index(self.focus) + 1
+        else:
+            idx = 0
+
+        if idx < len(focusable_nodes):
+            self.focus_element(focusable_nodes[idx])
+            self.browser.focus_content()
+        else:
+            self.focus_element(None)
+            self.browser.focus_addressbar()
+        self.set_needs_render()
 
     def set_dark_mode(self, val: bool):
         self.dark_mode = val
@@ -81,6 +106,23 @@ class Tab:
         self.zoom = 1
         self.scroll_changed_in_tab = True
         self.set_needs_render()
+
+    def scroll_to(self, elt: Element):
+        objs = [
+            obj for obj in tree_to_list(self.document, [])
+            if obj.node == self.focus
+        ]
+        if not objs:
+            return
+        obj = objs[0]
+
+        if self.scroll < obj.y < self.scroll + self.tab_height:
+            return
+
+        document_height = math.ceil(self.document.height + 2*V_STEP)
+        new_scroll = obj.y - SCROLL_STEP
+        self.scroll = self.clamp_scroll(new_scroll)
+        self.scroll_changed_in_tab = True
 
     def clamp_scroll(self, scroll):
         height = math.ceil(self.document.height + 2*V_STEP)
@@ -110,6 +152,10 @@ class Tab:
         needs_composite = self.needs_style or self.needs_layout
         self.render()
 
+        if self.needs_focus_scroll and self.focus:
+            self.scroll_to(self.focus)
+        self.needs_focus_scroll = False
+
         composited_updates = None
         if not needs_composite:
             composited_updates = {}
@@ -123,8 +169,9 @@ class Tab:
 
         document_height = math.ceil(self.document.height + 2*V_STEP)
         commit_data = CommitData(
-            cast(URL, self.url), scroll, document_height, self.display_list, composited_updates)
+            cast(URL, self.url), scroll, document_height, self.display_list, composited_updates, self.accessibility_tree, self.focus)
         self.display_list = None
+        self.accessibility_tree = None
         self.scroll_changed_in_tab = False
         self.browser.commit(self, commit_data)
 
@@ -162,8 +209,40 @@ class Tab:
             cast(Element, elt).attributes["action"])
         self.load(url, body)
 
-    def keypress(self, char: str):
+    def activate_element(self, elt: Element):
+        if elt.tag == "input":
+            elt.attributes["value"] = ""
+            self.set_needs_render()
+        elif elt.tag == "a" and "href" in elt.attributes:
+            url = cast(URL, self.url).resolve(elt.attributes["href"])
+            self.load(url)
+        elif elt.tag == "button":
+            while elt:
+                if elt.tag == "form" and "action" in elt.attributes:
+                    self.submit_form(elt)
+                elt = cast(Element, elt.parent)
+
+    def focus_element(self, node: Union[Element, None]):
+        if node and node != self.focus:
+            self.needs_focus_scroll = True
         if self.focus:
+            self.focus.is_focused = False
+        self.focus = node
+        if node:
+            node.is_focused = True
+        self.set_needs_render()
+
+    def enter(self):
+        if not self.focus:
+            return
+        if self.js and self.js.dispatch_event("click", self.focus):
+            return
+        self.activate_element(self.focus)
+
+    def keypress(self, char: str):
+        if self.focus and self.focus.tag == "input":
+            if not "value" in self.focus.attributes:
+                self.activate_element(self.focus)
             if self.js and self.js.dispatch_event("keydown", self.focus):
                 return
             self.focus.attributes["value"] += char
@@ -171,53 +250,32 @@ class Tab:
 
     def click(self, x: float, y: float):
         self.render()
-        self.focus = None
+        self.focus_element(None)
         y += self.scroll
         loc_rect = skia.Rect.MakeXYWH(x, y, 1, 1)
         objs = [obj for obj in tree_to_list(self.document, [])
                 if absolute_bounds_for_obj(obj).intersects(
                     loc_rect)]
-
         if not objs:
             return
-        elt: Union[Node, None] = objs[-1].node
-
+        elt = objs[-1].node
+        if elt and self.js and self.js.dispatch_event("click", elt):
+            return
         while elt:
             if isinstance(elt, Text):
                 pass
-            elif elt.tag == "a" and "href" in elt.attributes:
-                if self.js and self.js.dispatch_event("click", elt):
-                    return
-                url = cast(URL, self.url).resolve(elt.attributes["href"])
-                return self.load(url)
-            elif elt.tag == "input":
-                if self.js and self.js.dispatch_event("click", elt):
-                    return
-                elt.attributes["value"] = ""
-                if self.focus:
-                    self.focus.is_focused = False
-                self.focus = elt
-                elt.is_focused = True
-                self.set_needs_render()
+            elif is_focusable(elt):
+                self.focus_element(elt)
+                self.activate_element(elt)
                 return
-            elif elt.tag == "button":
-                if self.js and self.js.dispatch_event("click", elt):
-                    return
-                while elt:
-                    if isinstance(elt, Text):
-                        pass
-                    elif elt.tag == "form" and "action" in elt.attributes:
-                        return self.submit_form(elt)
-                    elt = elt.parent
-
-            if elt is not None:
-                elt = elt.parent
+            elt = elt.parent
 
     def allowed_request(self, url: URL):
         return self.allowed_origins == None or \
             url.origin() in self.allowed_origins
 
     def load(self, url: URL, payload=None):
+        self.focus = None
         self.scroll = 0
         self.zoom = 1
         self.scroll_changed_in_tab = True
@@ -292,7 +350,13 @@ class Tab:
             self.document = DocumentLayout(self.nodes)
             self.document.layout(self.zoom)
             self.needs_paint = True
+            self.needs_accessibility = True
             self.needs_layout = False
+
+        if self.needs_accessibility:
+            self.accessibility_tree = AccessibilityNode(self.nodes)
+            self.accessibility_tree.build()
+            self.needs_accessibility = False
 
         if self.needs_paint:
             self.display_list = []
