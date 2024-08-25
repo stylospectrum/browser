@@ -28,6 +28,9 @@ button {
   font-style: normal;
   background-color: orange;
 }
+iframe {
+  outline: 1px solid black;
+}
 input:focus {
   outline: 2px solid black;
 }

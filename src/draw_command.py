@@ -133,7 +133,7 @@ class DrawOutline(PaintCommand):
 
 
 class DrawLine(PaintCommand):
-    def __init__(self, x1: int, y1: int, x2: int, y2: int, color: str, thickness: int):
+    def __init__(self, x1: float, y1: float, x2: float, y2: float, color: str, thickness: float):
         super().__init__(skia.Rect.MakeLTRB(x1, y1, x2, y2))
         self.x1 = x1
         self.y1 = y1
@@ -215,6 +215,7 @@ class DrawRRect(PaintCommand):
     def __repr__(self):
         return "DrawRRect(rect={}, color={})".format(
             str(self.rrect), self.color)
+
 
 class DrawImage(PaintCommand):
     def __init__(self, image, rect, quality: str):

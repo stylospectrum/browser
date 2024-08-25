@@ -11,13 +11,15 @@ if TYPE_CHECKING:
 T = TypeVar('T')
 FONTS: dict[tuple[str, str], tuple] = {}
 
+
 def parse_image_rendering(quality: str):
-   if quality == "high-quality":
-       return skia.FilterQuality.kHigh_FilterQuality
-   elif quality == "crisp-edges":
-       return skia.FilterQuality.kLow_FilterQuality
-   else:
-       return skia.FilterQuality.kMedium_FilterQuality
+    if quality == "high-quality":
+        return skia.FilterQuality.kHigh_FilterQuality
+    elif quality == "crisp-edges":
+        return skia.FilterQuality.kLow_FilterQuality
+    else:
+        return skia.FilterQuality.kMedium_FilterQuality
+
 
 def parse_blend_mode(blend_mode_str: Union[str, None]):
     if blend_mode_str == "multiply":
@@ -50,12 +52,14 @@ def get_font(size: int, weight: str, style: str):
         FONTS[key] = font
     return skia.Font(FONTS[key], size)
 
+
 def font(style, zoom: float):
     weight = style["font-weight"]
     variant = style["font-style"]
     size = float(style["font-size"][:-2]) * 0.75
     font_size = dpx(size, zoom)
     return get_font(font_size, weight, variant)
+
 
 def cascade_priority(rule: CSSRule):
     media, selector, body = rule
@@ -79,11 +83,15 @@ def parse_color(color: str):
     else:
         return skia.ColorBLACK
 
+
 def parse_outline(outline_str: Union[str, None]):
-    if not outline_str: return None
+    if not outline_str:
+        return None
     values = outline_str.split(" ")
-    if len(values) != 3: return None
-    if values[1] != "solid": return None
+    if len(values) != 3:
+        return None
+    if values[1] != "solid":
+        return None
     return int(values[0][:-2]), values[2]
 
 
@@ -156,13 +164,17 @@ def absolute_to_local(display_item, rect):
 def dpx(css_px: float, zoom: float):
     return css_px * zoom
 
+
 def is_focusable(node: 'Element'):
     if get_tabindex(node) < 0:
         return False
     elif "tabindex" in node.attributes:
         return True
+    elif "contenteditable" in node.attributes:
+        return True
     else:
         return node.tag in ["input", "button", "a"]
+
 
 def get_tabindex(node: 'Element'):
     tabindex = int(node.attributes.get("tabindex", "9999999"))

@@ -1,16 +1,20 @@
-var div = document.querySelectorAll("div")[0];
+window.div = window.document.querySelectorAll("div")[0];
 
-function fade_in() {
-  requestAnimationFrame(function () {
-    div.style = "opacity: 0.999";
+window.fade_in = function () {
+  window.requestAnimationFrame(function () {
+    window.div.style = "opacity: 0.999";
   });
-}
+};
 
-function fade_out() {
-  requestAnimationFrame(function () {
-    div.style = "opacity: 0.1";
+window.fade_out = function () {
+  window.requestAnimationFrame(function () {
+    window.div.style = "opacity: 0.1";
   });
-}
+};
 
-document.querySelectorAll("button")[0].addEventListener("click", fade_out);
-document.querySelectorAll("button")[1].addEventListener("click", fade_in);
+window.document
+  .querySelectorAll("button")[0]
+  .addEventListener("click", window.fade_out);
+window.document
+  .querySelectorAll("button")[1]
+  .addEventListener("click", window.fade_in);

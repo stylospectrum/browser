@@ -1,8 +1,9 @@
 import skia
 
-DEFAULT_URL = 'https://browser.engineering/examples/example15-img.html'
+DEFAULT_URL = 'https://browser.engineering/invalidation.html'
 BROKEN_IMAGE = skia.Image.open("./Broken_Image.png")
-WIDTH, HEIGHT = 800, 600
+WIDTH, HEIGHT = 800, 400
+IFRAME_WIDTH_PX, IFRAME_HEIGHT_PX = 300, 150
 H_STEP, V_STEP = 13.0, 18.0
 INPUT_WIDTH_PX = 200
 SCROLL_STEP = 100

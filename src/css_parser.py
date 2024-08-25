@@ -3,7 +3,7 @@ from constants import INHERITED_PROPERTIES, REFRESH_RATE_SEC
 from node import Node, Element
 
 if TYPE_CHECKING:
-    from browser import Tab
+    from frame import Frame
 
 
 class TagSelector:
@@ -30,6 +30,7 @@ class DescendantSelector:
             node = node.parent
         return False
 
+
 class PseudoclassSelector:
     def __init__(self, pseudoclass: str, base: TagSelector):
         self.pseudoclass = pseudoclass
@@ -43,6 +44,7 @@ class PseudoclassSelector:
             return node.is_focused
         else:
             return False
+
 
 class NumericAnimation:
     def __init__(self, old_value: str, new_value: str, num_frames: int):
@@ -160,7 +162,7 @@ class CSSParser:
             pseudoclass = self.word().casefold()
             out = PseudoclassSelector(pseudoclass, out)
         return out
-    
+
     def selector(self):
         out = self.simple_selector()
         self.whitespace()
@@ -179,7 +181,7 @@ class CSSParser:
                 if self.s[self.i] == "@" and not media:
                     prop, val = self.media_query()
                     if prop == "prefers-color-scheme" and \
-                        val in ["dark", "light"]:
+                            val in ["dark", "light"]:
                         media = val
                     self.whitespace()
                     self.literal("{")
@@ -245,7 +247,7 @@ def diff_styles(old_style: Style, new_style: Style):
     return transitions
 
 
-def style(node: Node, rules: list[CSSRule], tab: 'Tab'):
+def style(node: Node, rules: list[CSSRule], frame: 'Frame'):
     old_style = node.style
 
     node.style = {}
@@ -257,7 +259,8 @@ def style(node: Node, rules: list[CSSRule], tab: 'Tab'):
 
     for media, selector, body in rules:
         if media:
-            if (media == "dark") != tab.dark_mode: continue
+            if (media == "dark") != frame.tab.dark_mode:
+                continue
         if not selector.matches(node):
             continue
         for property, value in body.items():
@@ -282,11 +285,11 @@ def style(node: Node, rules: list[CSSRule], tab: 'Tab'):
         for property, (old_value, new_value, num_frames) \
                 in transitions.items():
             if property == "opacity":
-                tab.set_needs_render()
+                frame.set_needs_render()
                 animation = NumericAnimation(
                     old_value, new_value, num_frames)
                 node.animations[property] = animation
                 node.style[property] = animation.animate()
 
     for child in node.children:
-        style(child, rules, tab)
+        style(child, rules, frame)

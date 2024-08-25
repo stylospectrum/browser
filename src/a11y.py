@@ -1,13 +1,17 @@
 import skia
 
-from node import Node, Text
-from utils import is_focusable, absolute_bounds_for_obj
+from typing import Union
+
+from node import Node, Text, Element
+from utils import is_focusable, absolute_bounds_for_obj, dpx
+
 
 class AccessibilityNode:
-    def __init__(self, node: Node):
+    def __init__(self, node: Node, parent: Union['AccessibilityNode', None] = None):
         self.node = node
         self.children: list['AccessibilityNode'] = []
         self.text = ""
+        self.parent = parent
         self.bounds = self.compute_bounds()
 
         if isinstance(node, Text):
@@ -28,20 +32,40 @@ class AccessibilityNode:
                 self.role = "document"
             elif node.tag == "img":
                 self.role = "image"
+            elif node.tag == "iframe":
+                self.role = "iframe"
             elif is_focusable(node):
                 self.role = "focusable"
             else:
                 self.role = "none"
 
+    def map_to_parent(self, rect):
+        pass
+
+    def absolute_bounds(self):
+        abs_bounds = []
+        for bound in self.bounds:
+            abs_bound = bound.makeOffset(0.0, 0.0)
+            if isinstance(self, FrameAccessibilityNode):
+                obj = self.parent
+            else:
+                obj = self
+            while obj:
+                obj.map_to_parent(abs_bound)
+                obj = obj.parent
+            abs_bounds.append(abs_bound)
+        return abs_bounds
+
     def compute_bounds(self):
         if self.node.layout_object:
             return [absolute_bounds_for_obj(self.node.layout_object)]
-        
+
         if isinstance(self.node, Text):
             return []
         inline = self.node.parent
         bounds = []
-        while not inline.layout_object: inline = inline.parent
+        while not inline.layout_object:
+            inline = inline.parent
         for line in inline.layout_object.children:
             line_bounds = skia.Rect.MakeEmpty()
             for child in line.children:
@@ -50,7 +74,7 @@ class AccessibilityNode:
                         child.x, child.y, child.width, child.height))
             bounds.append(line_bounds)
         return bounds
-    
+
     def build(self):
         for child_node in self.node.children:
             self.build_internal(child_node)
@@ -65,7 +89,7 @@ class AccessibilityNode:
             if "value" in self.node.attributes:
                 value = self.node.attributes["value"]
             elif self.node.tag != "input" and self.node.children and \
-                 isinstance(self.node.children[0], Text):
+                    isinstance(self.node.children[0], Text):
                 value = self.node.children[0].text
             else:
                 value = ""
@@ -88,7 +112,13 @@ class AccessibilityNode:
             self.text += " is focused"
 
     def build_internal(self, child_node: Node):
-        child = AccessibilityNode(child_node)
+        child: Union['AccessibilityNode', 'FrameAccessibilityNode']
+        if isinstance(child_node, Element) \
+                and child_node.tag == "iframe" and child_node.frame \
+                and child_node.frame.loaded:
+            child = FrameAccessibilityNode(child_node, self)
+        else:
+            child = AccessibilityNode(child_node, self)
         if child.role != "none":
             self.children.append(child)
             child.build()
@@ -108,5 +138,31 @@ class AccessibilityNode:
             node = self
         for child in self.children:
             res = child.hit_test(x, y)
-            if res: node = res
+            if res:
+                node = res
+        return node
+
+
+class FrameAccessibilityNode(AccessibilityNode):
+    def __init__(self, node: Element, parent: Union[AccessibilityNode, None] = None):
+        super().__init__(node, parent)
+        self.scroll = self.node.frame.scroll  # type: ignore
+        self.zoom = self.node.layout_object.zoom  # type: ignore
+
+    def map_to_parent(self, rect):
+        bounds = self.bounds[0]
+        rect.offset(bounds.left(), bounds.top() - self.scroll)
+        rect.intersect(bounds)
+
+    def hit_test(self, x: float, y: float):
+        bounds = self.bounds[0]
+        if not bounds.contains(x, y):
+            return
+        new_x = x - bounds.left() - dpx(1, self.zoom)
+        new_y = y - bounds.top() - dpx(1, self.zoom) + self.scroll
+        node = self
+        for child in self.children:
+            res = child.hit_test(new_x, new_y)
+            if res:
+                node = res
         return node

@@ -7,7 +7,7 @@ import skia
 from typing import Any, Union, cast
 
 from utils import tree_to_list, add_parent_pointers, local_to_absolute, print_tree
-from constants import SCROLL_STEP, WIDTH, HEIGHT, REFRESH_RATE_SEC
+from constants import SCROLL_STEP, WIDTH, HEIGHT, REFRESH_RATE_SEC, V_STEP
 from url import URL
 from draw_command import PaintCommand, DrawOutline
 from composite import CompositedLayer, DrawCompositedLayer
@@ -82,7 +82,8 @@ class Browser:
         self.active_tab_url: Union[URL, None] = None
         self.active_tab_scroll = 0
         self.active_tab_height = 0
-        self.active_tab_display_list: list[Union[VisualEffect, PaintCommand]] = []
+        self.active_tab_display_list: list[Union[VisualEffect, PaintCommand]] = [
+        ]
         self.dark_mode = False
         self.needs_accessibility = False
         self.accessibility_is_on = False
@@ -101,7 +102,8 @@ class Browser:
         threading.current_thread().name = "Browser thread"
 
     def update_accessibility(self) -> None:
-        if not self.accessibility_tree: return
+        if not self.accessibility_tree:
+            return
 
         if not self.screen_reader.has_spoken_document:
             self.screen_reader.speak_document()
@@ -131,10 +133,10 @@ class Browser:
         self.spoken_alerts = new_spoken_alerts
 
         if self.tab_focus and \
-            self.tab_focus != self.last_tab_focus:
+                self.tab_focus != self.last_tab_focus:
             nodes = [node for node in tree_to_list(
                 self.accessibility_tree, [])
-                        if node.node == self.tab_focus]
+                if node.node == self.tab_focus]
             if nodes:
                 self.focus_a11y_node = nodes[0]
                 self.screen_reader.speak_node(
@@ -181,7 +183,7 @@ class Browser:
         self.active_tab = tab
         task = Task(self.active_tab.set_dark_mode, self.dark_mode)
         self.active_tab.task_runner.schedule_task(task)
-        task = Task(self.active_tab.set_needs_paint)
+        task = Task(self.active_tab.set_needs_render_all_frames)
         self.active_tab.task_runner.schedule_task(task)
 
         self.clear_data()
@@ -195,7 +197,7 @@ class Browser:
 
     def clamp_scroll(self, scroll: int):
         height = self.active_tab_height
-        max_scroll = height - (HEIGHT - self.chrome.bottom)
+        max_scroll = height - (HEIGHT - self.chrome.bottom - 2*V_STEP)
         return max(0, min(scroll, max_scroll))
 
     def commit(self, tab: Tab, data: CommitData):
@@ -206,6 +208,7 @@ class Browser:
             self.animation_timer = None
             self.accessibility_tree = data.accessibility_tree
             self.tab_focus = data.focus
+            self.root_frame_focused = data.root_frame_focused
 
             if data.scroll != None:
                 self.active_tab_scroll = data.scroll
@@ -217,7 +220,8 @@ class Browser:
                 self.composited_updates = {}
                 self.set_needs_composite()
             else:
-                self.composited_updates = cast(dict[Element, Blend], data.composited_updates)
+                self.composited_updates = cast(
+                    dict[Element, Blend], data.composited_updates)
                 self.set_needs_draw()
 
         self.lock.release()
@@ -310,18 +314,24 @@ class Browser:
 
     def handle_down(self):
         self.lock.acquire(blocking=True)
-        if not self.active_tab_height:
+        if self.root_frame_focused:
+            if not self.active_tab_height:
+                self.lock.release()
+                return
+            self.active_tab_scroll = \
+                self.clamp_scroll(self.active_tab_scroll + SCROLL_STEP)
+            self.set_needs_draw()
+            self.needs_animation_frame = True
             self.lock.release()
             return
-        self.active_tab_scroll = self.clamp_scroll(
-            self.active_tab_scroll + SCROLL_STEP)
-        self.set_needs_raster()
+        task = Task(self.active_tab.scroll_down)
+        self.active_tab.task_runner.schedule_task(task)
         self.needs_animation_frame = True
         self.lock.release()
 
     def handle_hover(self, event):
         if not self.accessibility_is_on or \
-            not self.accessibility_tree:
+                not self.accessibility_tree:
             return
         self.pending_hover = (event.x, event.y - self.chrome.bottom)
         self.set_needs_accessibility()
@@ -418,14 +428,14 @@ class Browser:
                     parent = parent.parent
             if not parent:
                 self.draw_list.append(current_effect)
-        
+
         if self.pending_hover and self.accessibility_tree:
             (x, y) = self.pending_hover
             y += self.active_tab_scroll
             a11y_node = self.accessibility_tree.hit_test(x, y)
             if a11y_node:
                 if not self.hovered_a11y_node or \
-                    a11y_node.node != self.hovered_a11y_node.node:
+                        a11y_node.node != self.hovered_a11y_node.node:
                     self.needs_speak_hovered_node = True
                 self.hovered_a11y_node = a11y_node
         self.pending_hover = None
@@ -478,9 +488,9 @@ class Browser:
     def composite_raster_and_draw(self):
         self.lock.acquire(blocking=True)
         if not self.needs_composite and \
-            len(self.composited_updates) == 0 \
-            and not self.needs_raster and not self.needs_draw and not \
-            self.needs_accessibility:
+                len(self.composited_updates) == 0 \
+                and not self.needs_raster and not self.needs_draw and not \
+                self.needs_accessibility:
             self.lock.release()
             return
 

@@ -3,6 +3,7 @@ from typing import Union, TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from css_parser import Animation
     from layout import Blend, Layout
+    from frame import Frame
 
 
 class Text:
@@ -32,6 +33,7 @@ class Element:
         self.layout_object: Union['Layout', None] = None
         self.encoded_data = None
         self.image: Any
+        self.frame: Union['Frame', None] = None
 
     def __repr__(self):
         return "<" + self.tag + ">"

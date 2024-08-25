@@ -8,6 +8,7 @@ from utils import local_to_absolute, absolute_to_local
 
 DisplayItem = Union[VisualEffect, PaintCommand]
 
+
 class CompositedLayer:
     def __init__(self, skia_context, display_item: DisplayItem):
         self.skia_context = skia_context
@@ -46,6 +47,8 @@ class CompositedLayer:
                 self.skia_context, skia.Budgeted.kNo,
                 skia.ImageInfo.MakeN32Premul(
                     irect.width(), irect.height()))
+            if not self.surface:
+                self.surface = skia.Surface(irect.width(), irect.height())
             assert self.surface
 
         canvas = self.surface.getCanvas()
