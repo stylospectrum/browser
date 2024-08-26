@@ -1,8 +1,10 @@
 from typing import Union, TYPE_CHECKING, Any
 
+from protected_field import ProtectedField
+
 if TYPE_CHECKING:
     from css_parser import Animation
-    from layout import Blend, Layout
+    from layout import Blend
     from frame import Frame
 
 
@@ -11,10 +13,10 @@ class Text:
         self.text = text
         self.children: list[Node] = []
         self.parent = parent
-        self.style: dict[str, str] = {}
         self.is_focused = False
         self.animations: dict[str, 'Animation'] = {}
-        self.layout_object: Union['Layout', None] = None
+        self.layout_object: Any = None
+        self.style = ProtectedField()
 
     def __repr__(self):
         return repr(self.text)
@@ -26,11 +28,11 @@ class Element:
         self.attributes = attributes
         self.children: list[Node] = []
         self.parent = parent
-        self.style: dict[str, str] = {}
+        self.style = ProtectedField()
         self.is_focused = False
         self.animations: dict[str, 'Animation'] = {}
         self.blend_op: Union['Blend', None] = None
-        self.layout_object: Union['Layout', None] = None
+        self.layout_object: Any = None
         self.encoded_data = None
         self.image: Any
         self.frame: Union['Frame', None] = None

@@ -2,11 +2,11 @@ import math
 import skia
 import urllib.parse
 
-from typing import TYPE_CHECKING, Union, cast
+from typing import TYPE_CHECKING, Union, cast, Any
 
 from html_parser import HTMLParser
 from css_parser import style, CSSParser
-from layout import DocumentLayout
+from layout import DocumentLayout, BlockLayout
 from url import URL
 from node import Element, Text
 from task import Task
@@ -67,7 +67,7 @@ class Frame:
     def scroll_to(self, elt: Element):
         assert not (self.needs_style or self.needs_layout)
         objs = [
-            obj for obj in tree_to_list(self.document, [])
+            obj for obj in tree_to_list(self.document, []) # type: ignore
             if obj.node == self.tab.focus
         ]
         if not objs:
@@ -83,7 +83,7 @@ class Frame:
         self.tab.set_needs_paint()
 
     def clamp_scroll(self, scroll: int):
-        height = math.ceil(self.document.height + 2*V_STEP)
+        height = math.ceil(self.document.height + 2*V_STEP) # type: ignore
         max_scroll = height - self.frame_height
         return max(0, min(scroll, max_scroll))
 
@@ -163,13 +163,18 @@ class Frame:
                 last_text = Text("", self.tab.focus)
                 self.tab.focus.children.append(last_text)
             last_text.text += char
+            obj: Any = self.tab.focus.layout_object
+            if obj:
+                while not isinstance(obj, BlockLayout):
+                    obj = obj.parent
+                obj.children.mark()
             self.set_needs_render()
 
     def click(self, x: float, y: float):
         self.focus_element(None)
         y += self.scroll
         loc_rect = skia.Rect.MakeXYWH(x, y, 1, 1)
-        objs = [obj for obj in tree_to_list(self.document, [])
+        objs = [obj for obj in tree_to_list(self.document, []) # type: ignore
                 if absolute_bounds_for_obj(obj).intersects(
                     loc_rect)]
         if not objs:
@@ -298,6 +303,7 @@ class Frame:
             task = Task(iframe.frame.load, document_url)
             self.tab.task_runner.schedule_task(task)
 
+        self.document = DocumentLayout(self.nodes, self)
         self.set_needs_render()
         self.loaded = True
 
@@ -312,7 +318,6 @@ class Frame:
             self.needs_style = False
 
         if self.needs_layout:
-            self.document = DocumentLayout(self.nodes, self)
             self.document.layout(self.frame_width, self.tab.zoom)
             self.tab.needs_accessibility = True
             self.needs_layout = False

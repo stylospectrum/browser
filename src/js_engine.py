@@ -1,8 +1,9 @@
 import dukpy
 import threading
 
-from typing import cast, TYPE_CHECKING
+from typing import cast, TYPE_CHECKING, Any
 
+from layout import BlockLayout
 from css_parser import CSSParser
 from html_parser import HTMLParser
 from utils import tree_to_list
@@ -142,6 +143,11 @@ class JSContext:
         elt.children = new_nodes
         for child in elt.children:
             child.parent = elt
+        obj: Any = elt.layout_object
+        if obj:
+            while not isinstance(obj, BlockLayout):
+                obj = obj.parent
+            obj.children.mark()
         frame.set_needs_render()
 
     def style_set(self, handle: int, s: str, window_id: int):
