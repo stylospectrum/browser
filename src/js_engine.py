@@ -3,10 +3,10 @@ import threading
 
 from typing import cast, TYPE_CHECKING, Any
 
-from layout import BlockLayout
+from layout import BlockLayout, IframeLayout, ImageLayout
 from css_parser import CSSParser
 from html_parser import HTMLParser
-from utils import tree_to_list
+from utils import tree_to_list, dirty_style
 from node import Element
 from url import URL
 from task import Task
@@ -86,6 +86,12 @@ class JSContext:
         self.throw_if_cross_origin(frame)
         elt = self.handle_to_node[handle]
         elt.attributes[attr] = value
+        obj = elt.layout_object
+        if isinstance(obj, IframeLayout) or \
+           isinstance(obj, ImageLayout):
+            if attr == "width" or attr == "height":
+                obj.width.mark()
+                obj.height.mark()
         frame.set_needs_render()
 
     def requestAnimationFrame(self):
@@ -155,6 +161,7 @@ class JSContext:
         self.throw_if_cross_origin(frame)
         elt = self.handle_to_node[handle]
         elt.attributes["style"] = s
+        dirty_style(elt)
         frame.set_needs_render()
 
     def dispatch_event(self, type: str, elt: Element, window_id: int):

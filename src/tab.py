@@ -81,12 +81,16 @@ class Tab:
         else:
             self.zoom *= 1/1.1
             self.scroll *= 1/1.1
+        for id, frame in self.window_id_to_frame.items():
+            frame.document.zoom.mark()
         self.root_frame.scroll_changed_in_frame = True  # type: ignore
         self.set_needs_render_all_frames()
 
     def reset_zoom(self):
         self.scroll /= self.zoom
         self.zoom = 1
+        for id, frame in self.window_id_to_frame.items():
+            frame.document.zoom.mark()
         self.root_frame.scroll_changed_in_frame = True  # type: ignore
         self.set_needs_render_all_frames()
 
@@ -150,7 +154,7 @@ class Tab:
                         node.animations.items():
                     value = animation.animate()
                     if value:
-                        node.style[property_name] = value
+                        node.style[property_name].set(value)
                         self.composited_updates.append(node)
                         self.set_needs_paint()
 

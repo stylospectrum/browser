@@ -12,7 +12,7 @@ from node import Element, Text
 from task import Task
 from js_engine import JSContext
 from constants import INHERITED_PROPERTIES, BROKEN_IMAGE, V_STEP, SCROLL_STEP
-from utils import tree_to_list, cascade_priority, absolute_bounds_for_obj, is_focusable, get_tabindex, dpx, print_tree
+from utils import tree_to_list, cascade_priority, absolute_bounds_for_obj, is_focusable, get_tabindex, dpx, dirty_style
 
 
 if TYPE_CHECKING:
@@ -67,7 +67,7 @@ class Frame:
     def scroll_to(self, elt: Element):
         assert not (self.needs_style or self.needs_layout)
         objs = [
-            obj for obj in tree_to_list(self.document, []) # type: ignore
+            obj for obj in tree_to_list(self.document, [])  # type: ignore
             if obj.node == self.tab.focus
         ]
         if not objs:
@@ -83,7 +83,7 @@ class Frame:
         self.tab.set_needs_paint()
 
     def clamp_scroll(self, scroll: int):
-        height = math.ceil(self.document.height + 2*V_STEP) # type: ignore
+        height = math.ceil(self.document.height + 2*V_STEP)  # type: ignore
         max_scroll = height - self.frame_height
         return max(0, min(scroll, max_scroll))
 
@@ -135,12 +135,14 @@ class Frame:
             self.needs_focus_scroll = True
         if self.tab.focus:
             self.tab.focus.is_focused = False
+            dirty_style(self.tab.focus)
         if self.tab.focused_frame and self.tab.focused_frame != self:
             self.tab.focused_frame.set_needs_render()
         self.tab.focus = node
         self.tab.focused_frame = self
         if node:
             node.is_focused = True
+            dirty_style(node)
         self.set_needs_render()
 
     def keypress(self, char: str):
@@ -174,7 +176,7 @@ class Frame:
         self.focus_element(None)
         y += self.scroll
         loc_rect = skia.Rect.MakeXYWH(x, y, 1, 1)
-        objs = [obj for obj in tree_to_list(self.document, []) # type: ignore
+        objs = [obj for obj in tree_to_list(self.document, [])  # type: ignore
                 if absolute_bounds_for_obj(obj).intersects(
                     loc_rect)]
         if not objs:

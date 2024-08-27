@@ -14,14 +14,13 @@ if TYPE_CHECKING:
 
 
 def paint_visual_effects(node: Element, cmds: list, rect):
-    opacity = float(node.style.get("opacity", "1.0"))
-    blend_mode = node.style.get("mix-blend-mode")
+    opacity = float(node.style["opacity"].get())
+    blend_mode = node.style["mix-blend-mode"].get()
     translation = parse_transform(
-        node.style.get("transform", ""))
+        node.style["transform"].get())
 
-    if node.style.get("overflow", "visible") == "clip":
-        border_radius = float(node.style.get(
-            "border-radius", "0px")[:-2])
+    if node.style["overflow"].get() == "clip":
+        border_radius = float(node.style["border-radius"].get()[:-2])
         if not blend_mode:
             blend_mode = "source-over"
         cmds.append(Blend(1.0, "destination-in", node, [
@@ -35,7 +34,7 @@ def paint_visual_effects(node: Element, cmds: list, rect):
 
 
 def paint_outline(node: Node, cmds: list[PaintCommand], rect, zoom: float):
-    outline = parse_outline(node.style.get("outline"))
+    outline = parse_outline(node.style["outline"].get())
     if not outline:
         return
     thickness, color = outline
@@ -43,8 +42,8 @@ def paint_outline(node: Node, cmds: list[PaintCommand], rect, zoom: float):
 
 
 def DrawCursor(elt: Union['TextLayout', 'BlockLayout'], offset: float):
-    x = elt.x + offset
-    return DrawLine(x, elt.y, x, elt.y + elt.height, "red", 1)
+    x = elt.x.get() + offset
+    return DrawLine(x, elt.y.get(), x, elt.y.get() + elt.height.get(), "red", 1)
 
 
 class TextLayout:
@@ -54,10 +53,14 @@ class TextLayout:
         self.children: list = []
         self.parent = parent
         self.previous = previous
-        self.y = 0.0
-        self.x = 0.0
-        self.height = 0.0
-        self.zoom: float
+        self.x = ProtectedField(self, 'x')
+        self.y = ProtectedField(self, 'y')
+        self.height = ProtectedField(self, 'height')
+        self.width = ProtectedField(self, 'width')
+        self.zoom = ProtectedField(self, 'zoom')
+        self.font = ProtectedField(self, 'font')
+        self.ascent = ProtectedField(self, 'ascent')
+        self.descent = ProtectedField(self, 'descent')
 
     def should_paint(self):
         return True
@@ -68,22 +71,31 @@ class TextLayout:
             self.y + self.height)
 
     def layout(self) -> None:
-        self.zoom = self.parent.zoom.get()
-        self.font = font(self.node.style, self.zoom)
+        self.zoom.copy(self.parent.zoom)
+        zoom = self.zoom.read(notify=self.font)
+        self.font.set(font(
+            self.node.style, zoom, notify=self.font))
 
-        # Do not set self.y!!!
-        self.width = self.font.measureText(self.word)
+        f = self.font.read(notify=self.width)
+        self.width.set(f.measureText(self.word))
 
         if self.previous:
-            space = self.previous.font.measureText(" ")
-            self.x = self.previous.x + space + self.previous.width
+            prev_x = self.previous.x.read(notify=self.x)
+            prev_font = self.previous.font.read(notify=self.x)
+            prev_width = self.previous.width.read(notify=self.x)
+            self.x.set(
+                prev_x + prev_font.measureText(' ') + prev_width)
         else:
-            self.x = self.parent.x
+            self.x.copy(self.parent.x)
 
-        self.height = linespace(self.font)
+        f = self.font.read(notify=self.ascent)
+        self.ascent.set(f.getMetrics().fAscent * 1.25)
 
-        self.ascent = self.font.getMetrics().fAscent * 1.25
-        self.descent = self.font.getMetrics().fDescent * 1.25
+        f = self.font.read(notify=self.descent)
+        self.descent.set(f.getMetrics().fDescent * 1.25)
+
+        f = self.font.read(notify=self.height)
+        self.height.set(linespace(f) * 1.25)
 
     def paint(self):
         color = self.node.style["color"]
@@ -104,25 +116,31 @@ class EmbedLayout:
         self.children: list = []
         self.parent = parent
         self.previous = previous
-        self.width = INPUT_WIDTH_PX
-        self.x = 0
-        self.y = 0
-        self.width = 0
-        self.height = 0
+        self.width = ProtectedField(self, 'width')
+        self.zoom = ProtectedField(self, 'zoom')
+        self.x = ProtectedField(self, 'x')
+        self.y = ProtectedField(self, 'y')
+        self.height = ProtectedField(self, 'height')
+        self.ascent = ProtectedField(self, 'ascent')
+        self.descent = ProtectedField(self, 'descent')
         self.node.layout_object = self
 
     def should_paint(self):
         return True
 
     def layout(self):
-        self.zoom = self.parent.zoom
-        self.font = font(self.node.style, self.zoom)
+        self.zoom.copy(self.parent.zoom)
+        zoom = self.zoom.read(notify=self.width)
+        style = self.node.style.read(notify=self.width)
+        self.font = font(style, zoom)
+
         if self.previous:
-            space = self.previous.font.measureText(" ")
-            self.x = \
-                self.previous.x + space + self.previous.width
+            prev_x = self.previous.x.read(notify=self.x)
+            prev_font = self.previous.font.read(notify=self.x)
+            prev_width = self.previous.width.read(notify=self.x)
+            self.x.set(prev_x + prev_font.measureText(' ') + prev_width)
         else:
-            self.x = self.parent.x
+            self.x.copy(self.parent.x)
 
 
 class InputLayout(EmbedLayout):
@@ -131,11 +149,15 @@ class InputLayout(EmbedLayout):
 
     def layout(self):
         super().layout()
+        zoom = self.zoom.read(notify=self.width)
+        self.width.set(dpx(INPUT_WIDTH_PX, zoom))
 
-        self.width = dpx(INPUT_WIDTH_PX, self.zoom)
-        self.height = linespace(self.font)
-        self.ascent = -self.height
-        self.descent = 0
+        font = self.font.read(notify=self.height)
+        self.height.set(linespace(font))
+
+        height = self.height.read(notify=self.ascent)
+        self.ascent.set(-height)
+        self.descent.set(0)
 
     def self_rect(self):
         return skia.Rect.MakeLTRB(self.x, self.y,
@@ -208,10 +230,12 @@ class ImageLayout(EmbedLayout):
             self.width = dpx(image_width, self.zoom)
             self.img_height = dpx(image_height, self.zoom)
 
-        self.height = max(self.img_height, linespace(self.font))
+        font = self.font.read(notify=self.height)
+        self.height.set(max(self.img_height, linespace(font)))
 
-        self.ascent = -self.height
-        self.descent = 0
+        height = self.height.read(notify=self.ascent)
+        self.ascent.set(-height)
+        self.descent.set(0)
 
     def paint(self):
         cmds = []
@@ -241,23 +265,27 @@ class IframeLayout(EmbedLayout):
         width_attr = self.node.attributes.get("width")
         height_attr = self.node.attributes.get("height")
 
+        w_zoom = self.zoom.read(notify=self.width)
         if width_attr:
-            self.width = dpx(int(width_attr) + 2, self.zoom)
+            self.width.set(dpx(int(width_attr) + 2, w_zoom))
         else:
-            self.width = dpx(IFRAME_WIDTH_PX + 2, self.zoom)
+            self.width.set(dpx(IFRAME_WIDTH_PX + 2, w_zoom))
 
+        h_zoom = self.zoom.read(notify=self.height)
         if height_attr:
-            self.height = dpx(int(height_attr) + 2, self.zoom)
+            self.height.set(dpx(int(height_attr) + 2, h_zoom))
         else:
-            self.height = dpx(IFRAME_HEIGHT_PX + 2, self.zoom)
+            self.height.set(dpx(IFRAME_HEIGHT_PX + 2, h_zoom))
 
         self.node.frame.frame_height = \
-            self.height - dpx(2, self.zoom)
+            self.height.get() - dpx(2, self.zoom.get())
         self.node.frame.frame_width = \
-            self.width - dpx(2, self.zoom)
+            self.width.get() - dpx(2, self.zoom.get())
+        self.node.frame.document.width.mark()
 
-        self.ascent = -self.height
-        self.descent = 0
+        height = self.height.read(notify=self.ascent)
+        self.ascent.set(-height)
+        self.descent.set(0)
 
     def paint(self):
         cmds = []
@@ -303,43 +331,61 @@ class LineLayout:
         self.parent = parent
         self.previous = previous
         self.children: list[Union[TextLayout, InputLayout]] = []
-        self.height = 0
-        self.x: float
-        self.y: float
-        self.zoom = ProtectedField()
+        self.height = ProtectedField(self, 'height')
+        self.width = ProtectedField(self, 'width')
+        self.x = ProtectedField(self, 'x')
+        self.y = ProtectedField(self, 'y')
+        self.zoom = ProtectedField(self, 'zoom')
+        self.ascent = ProtectedField(self, 'ascent')
+        self.descent = ProtectedField(self, 'descent')
 
     def should_paint(self):
         return True
 
     def layout(self) -> None:
         self.zoom.copy(self.parent.zoom)
-        self.width = self.parent.width
-        self.x = self.parent.x
+        self.width.copy(self.parent.width)
 
+        self.x.copy(self.parent.x)
         if self.previous:
-            self.y = self.previous.y + self.previous.height
+            prev_y = self.previous.y.read(notify=self.y)
+            prev_height = self.previous.height.read(notify=self.y)
+            self.y.set(prev_y + prev_height)
         else:
-            self.y = self.parent.y
+            self.y.copy(self.parent.y)
 
         if not self.children:
-            self.height = 0
+            self.ascent.set(0)
+            self.descent.set(0)
+            self.height.set(0)
             return
 
         for word in self.children:
             word.layout()
 
-        max_ascent = max([-child.ascent
-                          for child in self.children])
-        baseline = self.y + max_ascent
+        self.ascent.set(max([
+            -child.ascent.read(notify=self.ascent)
+            for child in self.children
+        ]))
+
+        self.descent.set(max([
+            child.descent.read(notify=self.descent)
+            for child in self.children
+        ]))
 
         for child in self.children:
+            new_y = self.y.read(notify=child.y)
+            new_y += self.ascent.read(notify=child.y)
             if isinstance(child, TextLayout):
-                child.y = baseline + child.ascent / 1.25
+                new_y += child.ascent.read(notify=child.y) / 1.25
             else:
-                child.y = baseline + child.ascent
-        max_descent = max([child.descent
-                           for child in self.children])
-        self.height = max_ascent + max_descent
+                new_y += child.ascent.read(notify=child.y)
+            child.y.set(new_y)
+
+        max_ascent = self.ascent.read(notify=self.height)
+        max_descent = self.descent.read(notify=self.height)
+
+        self.height.set(max_ascent + max_descent)
 
     def paint(self):
         return []
@@ -367,16 +413,34 @@ class BlockLayout:
         self.node = node
         self.parent = parent
         self.previous = previous
-        self.children = ProtectedField()
-        self.zoom = ProtectedField()
+        self.children = ProtectedField(self, 'children', self.parent)
+        self.zoom = ProtectedField(self, 'zoom', self.parent)
         self.node.layout_object = self
         self.frame = frame
 
         self.cursor_x = 0.0
-        self.x = 0.0
-        self.y = 0.0
-        self.width = ProtectedField()
-        self.height = 0.0
+        self.x = ProtectedField(self, 'x', self.parent)
+        self.y = ProtectedField(self, 'y', self.parent)
+        self.width = ProtectedField(self, 'width', self.parent)
+        self.height = ProtectedField(self, 'height', self.parent)
+        self.has_dirty_descendants = False
+
+    def layout_needed(self):
+        if self.zoom.dirty:
+            return True
+        if self.width.dirty:
+            return True
+        if self.height.dirty:
+            return True
+        if self.x.dirty:
+            return True
+        if self.y.dirty:
+            return True
+        if self.children.dirty:
+            return True
+        if self.has_dirty_descendants:
+            return True
+        return False
 
     def layout_mode(self):
         if isinstance(self.node, Text):
@@ -394,18 +458,23 @@ class BlockLayout:
             return "block"
 
     def layout(self):
+        if not self.layout_needed():
+            return
+
         self.zoom.copy(self.parent.zoom)
         self.width.copy(self.parent.width)
-        self.x = self.parent.x
+        self.x.copy(self.parent.x)
 
         if self.previous:
-            self.y = self.previous.y + self.previous.height
+            prev_y = self.previous.y.read(notify=self.y)
+            prev_height = self.previous.height.read(notify=self.y)
+            self.y.set(prev_y + prev_height)
         else:
-            self.y = self.parent.y
+            self.y.copy(self.parent.y)
 
         mode = self.layout_mode()
         if mode == "block":
-             if self.children.dirty:
+            if self.children.dirty:
                 children = []
                 previous = None
                 for child in self.node.children:
@@ -415,21 +484,31 @@ class BlockLayout:
                     previous = next
                 self.children.set(children)
         else:
-            self.new_line()
-            self.recurse(self.node)
+            if self.children.dirty:
+                self.temp_children = []
+                self.new_line()
+                self.recurse(self.node)
+                self.children.set(self.temp_children)
+                self.temp_children = None
 
         for child in self.children.get():
             child.layout()
 
-        self.height = sum([
-            child.height for child in self.children.get()])
+        children = self.children.read(notify=self.height)
+        new_height = sum([
+            child.height.read(notify=self.height)
+            for child in children
+        ])
+        self.height.set(new_height)
+        self.has_dirty_descendants = False
 
     def add_inline_child(self, node: Node, w: float, child_class, frame: 'Frame', word=None):
         zoom = self.zoom.read(notify=self.children)
         width = self.width.read(notify=self.children)
+        style = node.style.read(notify=self.children)
         if self.cursor_x + w > self.x + width:
             self.new_line()
-        line = cast(LineLayout, self.children.get()[-1])
+        line = cast(LineLayout, self.temp_children[-1])
         previous_word = line.children[-1] if line.children else None
         if word:
             child = child_class(node, word, line, previous_word)
@@ -437,17 +516,17 @@ class BlockLayout:
             child = child_class(node, line, previous_word, frame)
         line.children.append(child)
         self.cursor_x += w + \
-            font(node.style, zoom).measureText(" ")
+            font(style, zoom).measureText(" ")
 
     def new_line(self):
         self.cursor_x = self.x
-        last_line = self.children[-1] if self.children else None
+        last_line = self.temp_children[-1] if self.temp_children else None
         new_line = LineLayout(self.node, self, last_line)
-        self.children.append(new_line)
+        self.temp_children.append(new_line)
 
     def word(self, node: Text, word: str):
         zoom = self.zoom.read(notify=self.children)
-        node_font = font(node.style, zoom)
+        node_font = font(node.style, zoom, notify=self.children)
         w = node_font.measureText(word)
         self.add_inline_child(node, w, TextLayout, self.frame, word)
 
@@ -539,12 +618,12 @@ class DocumentLayout:
         self.frame = frame
         self.parent = None
         self.children: list = []
-        self.x: Union[float, None] = None
-        self.y: Union[float, None] = None
-        self.width = ProtectedField()
-        self.height: Union[float, None] = None
+        self.x = ProtectedField(self, 'x')
+        self.y = ProtectedField(self, 'y')
+        self.width = ProtectedField(self, 'width')
+        self.height = ProtectedField(self, 'height')
+        self.zoom = ProtectedField(self, 'zoom')
         self.node.layout_object = self
-        self.zoom = ProtectedField()
 
     def layout(self, width: float, zoom: float):
         self.zoom.set(zoom)
@@ -556,10 +635,10 @@ class DocumentLayout:
             child = self.children[0]
         self.children = [child]
 
-        self.x = dpx(H_STEP, zoom)
-        self.y = dpx(V_STEP, zoom)
+        self.x.set(dpx(H_STEP, zoom))
+        self.y.set(dpx(V_STEP, zoom))
         child.layout()
-        self.height = child.height
+        self.height.copy(child.height)
 
     def paint(self):
         return []

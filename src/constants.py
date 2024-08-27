@@ -38,3 +38,13 @@ BLOCK_ELEMENTS = [
     "figcaption", "main", "div", "table", "form", "fieldset",
     "legend", "details", "summary"
 ]
+
+CSS_PROPERTIES = {
+    "font-size": "inherit", "font-weight": "inherit",
+    "font-style": "inherit", "color": "inherit",
+    "opacity": "1.0", "transition": "",
+    "transform": "none", "mix-blend-mode": None,
+    "border-radius": "0px", "overflow": "visible",
+    "outline": "none", "background-color": "transparent",
+    "image-rendering": "auto",
+}

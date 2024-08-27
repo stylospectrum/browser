@@ -2,11 +2,12 @@ import skia
 
 from typing import Union, TypeVar, Any, cast, TYPE_CHECKING
 
+from protected_field import ProtectedField
 from constants import NAMED_COLORS
 from css_parser import CSSRule, parse_transform
 
 if TYPE_CHECKING:
-    from node import Element
+    from node import Element, Node
 
 T = TypeVar('T')
 FONTS: dict[tuple[str, str], tuple] = {}
@@ -53,12 +54,15 @@ def get_font(size: int, weight: str, style: str):
     return skia.Font(FONTS[key], size)
 
 
-def font(style, zoom: float):
-    weight = style["font-weight"]
-    variant = style["font-style"]
-    size = float(style["font-size"][:-2]) * 0.75
+def font(css_style: dict[str, ProtectedField], zoom: float, notify: ProtectedField):
+    weight = css_style['font-weight'].read(notify)
+    style = css_style['font-style'].read(notify)
+    try:
+        size = float(css_style['font-size'].read(notify)[:-2]) * 0.75
+    except:
+        size = 16
     font_size = dpx(size, zoom)
-    return get_font(font_size, weight, variant)
+    return get_font(font_size, weight, style)
 
 
 def cascade_priority(rule: CSSRule):
@@ -102,7 +106,10 @@ def linespace(font) -> int:
 
 def tree_to_list(tree: T, list: list) -> list[T]:
     list.append(tree)
-    for child in cast(Any, tree).children:
+    children = cast(Any, tree).children
+    if isinstance(children, ProtectedField):
+        children = children.get()
+    for child in children:
         tree_to_list(child, list)
     return list
 
@@ -179,3 +186,8 @@ def is_focusable(node: 'Element'):
 def get_tabindex(node: 'Element'):
     tabindex = int(node.attributes.get("tabindex", "9999999"))
     return 9999999 if tabindex == 0 else tabindex
+
+
+def dirty_style(node: 'Node'):
+    for property, value in node.style.items():
+        value.mark()

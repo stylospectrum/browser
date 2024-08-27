@@ -16,7 +16,7 @@ class Text:
         self.is_focused = False
         self.animations: dict[str, 'Animation'] = {}
         self.layout_object: Any = None
-        self.style = ProtectedField()
+        self.style: dict[str, ProtectedField] = {}
 
     def __repr__(self):
         return repr(self.text)
@@ -28,7 +28,7 @@ class Element:
         self.attributes = attributes
         self.children: list[Node] = []
         self.parent = parent
-        self.style = ProtectedField()
+        self.style: dict[str, ProtectedField] = {}
         self.is_focused = False
         self.animations: dict[str, 'Animation'] = {}
         self.blend_op: Union['Blend', None] = None

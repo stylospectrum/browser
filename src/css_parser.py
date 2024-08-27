@@ -1,5 +1,6 @@
-from typing import TYPE_CHECKING, Union
-from constants import INHERITED_PROPERTIES, REFRESH_RATE_SEC
+from typing import TYPE_CHECKING, Union, Any
+
+from constants import INHERITED_PROPERTIES, REFRESH_RATE_SEC, CSS_PROPERTIES
 from node import Node, Element
 
 if TYPE_CHECKING:
@@ -75,7 +76,7 @@ class NumericAnimation:
 
 CSSSelector = TagSelector | DescendantSelector
 CSSRule = tuple[Union[str, None], CSSSelector, dict[str, str]]
-Style = dict[str, str]
+Style = dict[str, Any]
 Animation = NumericAnimation
 
 
@@ -248,48 +249,62 @@ def diff_styles(old_style: Style, new_style: Style):
 
 
 def style(node: Node, rules: list[CSSRule], frame: 'Frame'):
-    old_style = node.style
+    needs_style = any([field.dirty for field in node.style.values()])
 
-    node.style = {}
-    for property, default_value in INHERITED_PROPERTIES.items():
-        if node.parent:
-            node.style[property] = node.parent.style[property]
-        else:
-            node.style[property] = default_value
+    if needs_style:
+        old_style = dict([
+            (property, field.value)
+            for property, field in node.style.items()
+        ])
+        new_style: dict[str, Any] = CSS_PROPERTIES.copy()
 
-    for media, selector, body in rules:
-        if media:
-            if (media == "dark") != frame.tab.dark_mode:
+        for property, default_value in INHERITED_PROPERTIES.items():
+            if node.parent:
+                parent_field = node.parent.style[property]
+                parent_value = \
+                    parent_field.read(notify=node.style[property])
+                new_style[property] = parent_value
+            else:
+                new_style[property] = default_value
+
+        for media, selector, body in rules:
+            if media:
+                if (media == "dark") != frame.tab.dark_mode:
+                    continue
+            if not selector.matches(node):
                 continue
-        if not selector.matches(node):
-            continue
-        for property, value in body.items():
-            node.style[property] = value
+            for property, value in body.items():
+                new_style[property] = value
 
-    if isinstance(node, Element) and "style" in node.attributes:
-        pairs = CSSParser(node.attributes["style"]).body()
-        for property, value in pairs.items():
-            node.style[property] = value
+        if isinstance(node, Element) and "style" in node.attributes:
+            pairs = CSSParser(node.attributes["style"]).body()
+            for property, value in pairs.items():
+                new_style[property] = value
 
-    if node.style["font-size"].endswith("%"):
-        if node.parent:
-            parent_font_size = node.parent.style["font-size"]
-        else:
-            parent_font_size = INHERITED_PROPERTIES["font-size"]
-        node_pct = float(node.style["font-size"][:-1]) / 100
-        parent_px = float(parent_font_size[:-2])
-        node.style["font-size"] = str(node_pct * parent_px) + "px"
+        if new_style["font-size"].endswith("%"):
+            if node.parent:
+                parent_field = node.parent.style["font-size"]
+                parent_font_size = \
+                    parent_field.read(notify=node.style["font-size"])
+            else:
+                parent_font_size = INHERITED_PROPERTIES["font-size"]
+            node_pct = float(new_style["font-size"][:-1]) / 100
+            parent_px = float(parent_font_size[:-2])
+            new_style["font-size"] = str(node_pct * parent_px) + "px"
 
-    if old_style:
-        transitions = diff_styles(old_style, node.style)
-        for property, (old_value, new_value, num_frames) \
-                in transitions.items():
-            if property == "opacity":
-                frame.set_needs_render()
-                animation = NumericAnimation(
-                    old_value, new_value, num_frames)
-                node.animations[property] = animation
-                node.style[property] = animation.animate()
+        if old_style:
+            transitions = diff_styles(old_style, new_style)
+            for property, (old_value, new_value, num_frames) \
+                    in transitions.items():
+                if property == "opacity":
+                    frame.set_needs_render()
+                    animation = NumericAnimation(
+                        old_value, new_value, num_frames)
+                    node.animations[property] = animation
+                    new_style[property] = animation.animate()
+
+        for property, field in node.style.items():
+            field.set(new_style[property])
 
     for child in node.children:
         style(child, rules, frame)
